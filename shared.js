@@ -1,0 +1,976 @@
+// Shared helpers for img.html and vid.html.
+function readUint32(view, offset) {
+    return view.getUint32(offset, false);
+}
+
+function readUint64(view, offset) {
+    const high = view.getUint32(offset, false);
+    const low = view.getUint32(offset + 4, false);
+    return (BigInt(high) << 32n) | BigInt(low);
+}
+
+function readString(view, offset, length) {
+    let out = '';
+    for (let i = 0; i < length; i++) {
+        out += String.fromCharCode(view.getUint8(offset + i));
+    }
+    return out;
+}
+
+function readVint(view, offset, maskLengthBit) {
+    const first = view.getUint8(offset);
+    let length = 1;
+    if (first & 0x80) length = 1;
+    else if (first & 0x40) length = 2;
+    else if (first & 0x20) length = 3;
+    else if (first & 0x10) length = 4;
+    else if (first & 0x08) length = 5;
+    else if (first & 0x04) length = 6;
+    else if (first & 0x02) length = 7;
+    else length = 8;
+
+    let value = 0;
+    if (maskLengthBit) {
+        const mask = 1 << (8 - length);
+        value = first & (mask - 1);
+        for (let i = 1; i < length; i++) {
+            value = (value << 8) | view.getUint8(offset + i);
+        }
+        if (value === (mask - 1)) {
+            return { value: -1, length };
+        }
+    } else {
+        for (let i = 0; i < length; i++) {
+            value = (value << 8) | view.getUint8(offset + i);
+        }
+    }
+    return { value, length };
+}
+
+function readEbmlUnsigned(view, start, end) {
+    let value = 0;
+    for (let i = start; i < end; i++) {
+        value = (value << 8) | view.getUint8(i);
+    }
+    return value;
+}
+
+function estimateBitrate(fileSizeBytes, durationSeconds) {
+    if (!durationSeconds || !fileSizeBytes) return null;
+    return Math.round((fileSizeBytes * 8) / durationSeconds);
+}
+
+function formatBitrateMbps(bitrateBps, decimals = 1) {
+    if (!bitrateBps || !Number.isFinite(bitrateBps)) return '';
+    return `${(bitrateBps / 1000000).toFixed(decimals)} Mbps`;
+}
+
+function estimateFps(demuxed) {
+    if (!demuxed) return null;
+    if (demuxed.nativeFps && Number.isFinite(demuxed.nativeFps)) {
+        return demuxed.nativeFps;
+    }
+    if (demuxed.samples && demuxed.samples.length && demuxed.duration) {
+        return demuxed.samples.length / demuxed.duration;
+    }
+    return null;
+}
+
+function parseMp4(buffer) {
+    const view = new DataView(buffer);
+    const topLevel = [];
+    let offset = 0;
+    while (offset + 8 <= view.byteLength) {
+        let size = readUint32(view, offset);
+        const type = readString(view, offset + 4, 4);
+        let headerSize = 8;
+        if (size === 1) {
+            size = Number(readUint64(view, offset + 8));
+            headerSize = 16;
+        } else if (size === 0) {
+            size = view.byteLength - offset;
+        }
+        topLevel.push({ type, start: offset, size, headerSize });
+        offset += size;
+    }
+
+    function findChildren(box, types) {
+        const out = [];
+        let ptr = box.start + box.headerSize;
+        const end = box.start + box.size;
+        while (ptr + 8 <= end) {
+            let size = readUint32(view, ptr);
+            const type = readString(view, ptr + 4, 4);
+            let headerSize = 8;
+            if (size === 1) {
+                size = Number(readUint64(view, ptr + 8));
+                headerSize = 16;
+            } else if (size === 0) {
+                size = end - ptr;
+            }
+            if (!types || types.includes(type)) {
+                out.push({ type, start: ptr, size, headerSize });
+            }
+            ptr += size;
+        }
+        return out;
+    }
+
+    const moov = topLevel.find(b => b.type === 'moov');
+    const mdat = topLevel.find(b => b.type === 'mdat');
+    if (!moov || !mdat) {
+        throw new Error('MP4 missing moov/mdat');
+    }
+
+    const trak = findChildren(moov, ['trak']).find(t => {
+        const mdia = findChildren(t, ['mdia'])[0];
+        if (!mdia) return false;
+        const hdlr = findChildren(mdia, ['hdlr'])[0];
+        if (!hdlr) return false;
+        const handlerType = readString(view, hdlr.start + hdlr.headerSize + 8, 4);
+        return handlerType === 'vide';
+    });
+    if (!trak) throw new Error('MP4 video track not found');
+
+    const mdia = findChildren(trak, ['mdia'])[0];
+    const mdhd = findChildren(mdia, ['mdhd'])[0];
+    let timescale = 0;
+    let duration = 0;
+    const version = view.getUint8(mdhd.start + mdhd.headerSize);
+    if (version === 1) {
+        timescale = readUint32(view, mdhd.start + mdhd.headerSize + 20);
+        duration = Number(readUint64(view, mdhd.start + mdhd.headerSize + 24));
+    } else {
+        timescale = readUint32(view, mdhd.start + mdhd.headerSize + 12);
+        duration = readUint32(view, mdhd.start + mdhd.headerSize + 16);
+    }
+
+    const minf = findChildren(mdia, ['minf'])[0];
+    const stbl = findChildren(minf, ['stbl'])[0];
+    const stsd = findChildren(stbl, ['stsd'])[0];
+    const stts = findChildren(stbl, ['stts'])[0];
+    const stsz = findChildren(stbl, ['stsz'])[0];
+    const stsc = findChildren(stbl, ['stsc'])[0];
+    const stco = findChildren(stbl, ['stco', 'co64'])[0];
+    const stss = findChildren(stbl, ['stss'])[0];
+
+    const entryCount = readUint32(view, stsd.start + stsd.headerSize + 4);
+    if (!entryCount) {
+        throw new Error('MP4 stsd missing entry');
+    }
+    const sampleEntryStart = stsd.start + stsd.headerSize + 8;
+    const sampleEntrySize = readUint32(view, sampleEntryStart);
+    const codecType = readString(view, sampleEntryStart + 4, 4);
+    let avcC = null;
+    let width = view.getUint16(sampleEntryStart + 24, false);
+    let height = view.getUint16(sampleEntryStart + 26, false);
+    let entryPtr = sampleEntryStart + 8 + 8 + 8;
+    const entryEnd = sampleEntryStart + sampleEntrySize;
+    while (entryPtr + 8 <= entryEnd) {
+        const boxSize = readUint32(view, entryPtr);
+        const boxType = readString(view, entryPtr + 4, 4);
+        if (boxType === 'avcC') {
+            avcC = new Uint8Array(buffer.slice(entryPtr + 8, entryPtr + boxSize));
+            break;
+        }
+        entryPtr += boxSize;
+    }
+
+    if (codecType !== 'avc1' || !avcC) {
+        throw new Error('MP4 codec not supported: ' + codecType);
+    }
+
+    const sttsCount = readUint32(view, stts.start + stts.headerSize + 4);
+    let sttsPtr = stts.start + stts.headerSize + 8;
+    const sampleDeltas = [];
+    for (let i = 0; i < sttsCount; i++) {
+        const count = readUint32(view, sttsPtr);
+        const delta = readUint32(view, sttsPtr + 4);
+        for (let j = 0; j < count; j++) sampleDeltas.push(delta);
+        sttsPtr += 8;
+    }
+
+    const sampleSize = readUint32(view, stsz.start + stsz.headerSize + 4);
+    const sampleCount = readUint32(view, stsz.start + stsz.headerSize + 8);
+    const sampleSizes = [];
+    if (sampleSize) {
+        for (let i = 0; i < sampleCount; i++) {
+            sampleSizes.push(sampleSize);
+        }
+    } else {
+        let stszPtr = stsz.start + stsz.headerSize + 12;
+        for (let i = 0; i < sampleCount; i++) {
+            sampleSizes.push(readUint32(view, stszPtr));
+            stszPtr += 4;
+        }
+    }
+
+    const stscCount = readUint32(view, stsc.start + stsc.headerSize + 4);
+    const stscEntries = [];
+    let stscPtr = stsc.start + stsc.headerSize + 8;
+    for (let i = 0; i < stscCount; i++) {
+        const firstChunk = readUint32(view, stscPtr);
+        const samplesPerChunk = readUint32(view, stscPtr + 4);
+        stscEntries.push({ firstChunk, samplesPerChunk });
+        stscPtr += 12;
+    }
+
+    const chunkCount = readUint32(view, stco.start + stco.headerSize + 4);
+    const chunkOffsets = [];
+    let stcoPtr = stco.start + stco.headerSize + 8;
+    if (stco.type === 'co64') {
+        for (let i = 0; i < chunkCount; i++) {
+            const off = Number(readUint64(view, stcoPtr));
+            chunkOffsets.push(off);
+            stcoPtr += 8;
+        }
+    } else {
+        for (let i = 0; i < chunkCount; i++) {
+            chunkOffsets.push(readUint32(view, stcoPtr));
+            stcoPtr += 4;
+        }
+    }
+
+    let syncSamples = null;
+    if (stss) {
+        const syncCount = readUint32(view, stss.start + stss.headerSize + 4);
+        syncSamples = new Set();
+        let stssPtr = stss.start + stss.headerSize + 8;
+        for (let i = 0; i < syncCount; i++) {
+            syncSamples.add(readUint32(view, stssPtr));
+            stssPtr += 4;
+        }
+    }
+
+    const samples = [];
+    let dts = 0;
+    let sampleIndex = 0;
+    for (let chunkIndex = 1; chunkIndex <= chunkOffsets.length; chunkIndex++) {
+        let samplesPerChunk = stscEntries[stscEntries.length - 1].samplesPerChunk;
+        for (let i = 0; i < stscEntries.length; i++) {
+            const entry = stscEntries[i];
+            const nextEntry = stscEntries[i + 1];
+            if (chunkIndex >= entry.firstChunk && (!nextEntry || chunkIndex < nextEntry.firstChunk)) {
+                samplesPerChunk = entry.samplesPerChunk;
+                break;
+            }
+        }
+
+        let offsetInChunk = 0;
+        for (let i = 0; i < samplesPerChunk; i++) {
+            const size = sampleSizes[sampleIndex];
+            const offset = chunkOffsets[chunkIndex - 1] + offsetInChunk;
+            const timestampUs = Math.round((dts / timescale) * 1000000);
+            const key = syncSamples ? syncSamples.has(sampleIndex + 1) : true;
+            samples.push({
+                timestampUs,
+                data: new Uint8Array(buffer, offset, size),
+                type: key ? 'key' : 'delta'
+            });
+            offsetInChunk += size;
+            dts += sampleDeltas[sampleIndex] || 0;
+            sampleIndex++;
+            if (sampleIndex >= sampleCount) break;
+        }
+    }
+
+    const profile = avcC[1];
+    const compat = avcC[2];
+    const level = avcC[3];
+    const codec = `avc1.${profile.toString(16).padStart(2, '0')}${compat.toString(16).padStart(2, '0')}${level.toString(16).padStart(2, '0')}`;
+    const description = avcC.buffer.slice(avcC.byteOffset, avcC.byteOffset + avcC.byteLength);
+    const nativeFps = samples.length && duration ? samples.length / (duration / timescale) : null;
+
+    return {
+        codec,
+        description,
+        samples,
+        width,
+        height,
+        duration: duration / timescale,
+        nativeFps
+    };
+}
+
+function readEbmlElement(view, offset, end) {
+    if (offset >= end) return null;
+    const idInfo = readVint(view, offset, false);
+    const sizeInfo = readVint(view, offset + idInfo.length, true);
+    const dataStart = offset + idInfo.length + sizeInfo.length;
+    const dataEnd = sizeInfo.value === -1 ? end : dataStart + sizeInfo.value;
+    return {
+        id: idInfo.value,
+        start: offset,
+        dataStart,
+        dataEnd,
+        size: sizeInfo.value,
+        headerSize: idInfo.length + sizeInfo.length
+    };
+}
+
+function findSequence(u8, start, end, seq) {
+    for (let i = start; i + seq.length <= end; i++) {
+        let match = true;
+        for (let j = 0; j < seq.length; j++) {
+            if (u8[i + j] !== seq[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return i;
+    }
+    return -1;
+}
+
+function readVintSigned(view, offset) {
+    const info = readVint(view, offset, true);
+    const valueBits = 7 * info.length;
+    const bias = Math.pow(2, valueBits - 1) - 1;
+    return {
+        value: info.value - bias,
+        length: info.length
+    };
+}
+
+function parseSimpleBlock(buffer, blockStart, blockEnd, clusterTimecode, timecodeScale, videoTrackNumber) {
+    const blockView = new DataView(buffer, blockStart, blockEnd - blockStart);
+    const trackInfo = readVint(blockView, 0, true);
+    const trackNumber = trackInfo.value;
+    const timecode = blockView.getInt16(trackInfo.length, false);
+    const flags = blockView.getUint8(trackInfo.length + 2);
+    const lacing = (flags >> 1) & 0x03;
+    if (trackNumber !== videoTrackNumber) {
+        return [];
+    }
+
+    const timestampNs = (clusterTimecode + timecode) * timecodeScale;
+    const baseTimestampUs = Math.round(timestampNs / 1000);
+    const key = (flags & 0x80) !== 0;
+    const headerSize = trackInfo.length + 3;
+    if (lacing === 0) {
+        const data = new Uint8Array(buffer, blockStart + headerSize, blockEnd - blockStart - headerSize);
+        return [{ timestampUs: baseTimestampUs, data, type: key ? 'key' : 'delta' }];
+    }
+
+    let cursor = headerSize;
+    const numFrames = blockView.getUint8(cursor) + 1;
+    cursor += 1;
+    const sizes = [];
+    if (lacing === 1) {
+        for (let i = 0; i < numFrames - 1; i++) {
+            let size = 0;
+            while (cursor < blockEnd - blockStart) {
+                const byte = blockView.getUint8(cursor++);
+                size += byte;
+                if (byte !== 255) break;
+            }
+            sizes.push(size);
+        }
+    } else if (lacing === 2) {
+        const remaining = blockEnd - blockStart - cursor;
+        const size = Math.floor(remaining / numFrames);
+        for (let i = 0; i < numFrames - 1; i++) {
+            sizes.push(size);
+        }
+    } else if (lacing === 3) {
+        const first = readVint(blockView, cursor, true);
+        let size = first.value;
+        sizes.push(size);
+        cursor += first.length;
+        for (let i = 1; i < numFrames - 1; i++) {
+            const diff = readVintSigned(blockView, cursor);
+            cursor += diff.length;
+            size += diff.value;
+            sizes.push(size);
+        }
+    }
+
+    const totalKnown = sizes.reduce((sum, val) => sum + val, 0);
+    const remaining = blockEnd - blockStart - cursor;
+    const lastSize = remaining - totalKnown;
+    if (lastSize < 0) return [];
+    sizes.push(lastSize);
+
+    const samples = [];
+    let dataOffset = blockStart + cursor;
+    for (let i = 0; i < sizes.length; i++) {
+        const size = sizes[i];
+        if (size <= 0) continue;
+        const data = new Uint8Array(buffer, dataOffset, size);
+        samples.push({
+            timestampUs: baseTimestampUs + i,
+            data,
+            type: key ? 'key' : 'delta'
+        });
+        dataOffset += size;
+    }
+    return samples;
+}
+
+function parseWebm(buffer) {
+    const view = new DataView(buffer);
+    const u8 = new Uint8Array(buffer);
+    const EBML_ID = 0x1A45DFA3;
+    const SEGMENT_ID = 0x18538067;
+    const INFO_ID = 0x1549A966;
+    const TIMECODE_SCALE_ID = 0x2AD7B1;
+    const TRACKS_ID = 0x1654AE6B;
+    const TRACK_ENTRY_ID = 0xAE;
+    const TRACK_NUMBER_ID = 0xD7;
+    const TRACK_TYPE_ID = 0x83;
+    const CODEC_ID = 0x86;
+    const VIDEO_ID = 0xE0;
+    const PIXEL_WIDTH_ID = 0xB0;
+    const PIXEL_HEIGHT_ID = 0xBA;
+    const DISPLAY_WIDTH_ID = 0x54B0;
+    const DISPLAY_HEIGHT_ID = 0x54BA;
+    const CLUSTER_ID = 0x1F43B675;
+    const TIMECODE_ID = 0xE7;
+    const SIMPLE_BLOCK_ID = 0xA3;
+    const BLOCK_GROUP_ID = 0xA0;
+    const BLOCK_ID = 0xA1;
+
+    let offset = 0;
+    let segment = null;
+    while (offset < view.byteLength) {
+        const el = readEbmlElement(view, offset, view.byteLength);
+        if (!el) break;
+        if (el.id === EBML_ID || el.id === SEGMENT_ID) {
+            if (el.id === SEGMENT_ID) {
+                segment = el;
+                break;
+            }
+        }
+        offset = el.dataEnd;
+    }
+    if (!segment) {
+        throw new Error('WebM segment not found');
+    }
+
+    let timecodeScale = 1000000;
+    let videoTrackNumber = null;
+    let codecId = null;
+    let width = 0;
+    let height = 0;
+
+    let ptr = segment.dataStart;
+    while (ptr < segment.dataEnd) {
+        const el = readEbmlElement(view, ptr, segment.dataEnd);
+        if (!el) break;
+        if (el.id === INFO_ID) {
+            let infoPtr = el.dataStart;
+            while (infoPtr < el.dataEnd) {
+                const infoEl = readEbmlElement(view, infoPtr, el.dataEnd);
+                if (!infoEl) break;
+                if (infoEl.id === TIMECODE_SCALE_ID) {
+                    timecodeScale = readEbmlUnsigned(view, infoEl.dataStart, infoEl.dataEnd);
+                }
+                infoPtr = infoEl.dataEnd;
+            }
+        } else if (el.id === TRACKS_ID) {
+            let trackPtr = el.dataStart;
+            while (trackPtr < el.dataEnd) {
+                const trackEl = readEbmlElement(view, trackPtr, el.dataEnd);
+                if (!trackEl) break;
+                if (trackEl.id === TRACK_ENTRY_ID) {
+                    let entryPtr = trackEl.dataStart;
+                    let trackNumber = null;
+                    let trackType = null;
+                    let entryCodecId = null;
+                    let entryWidth = 0;
+                    let entryHeight = 0;
+                    let displayWidth = 0;
+                    let displayHeight = 0;
+                    while (entryPtr < trackEl.dataEnd) {
+                        const entryEl = readEbmlElement(view, entryPtr, trackEl.dataEnd);
+                        if (!entryEl) break;
+                        if (entryEl.id === TRACK_NUMBER_ID) {
+                            trackNumber = readEbmlUnsigned(view, entryEl.dataStart, entryEl.dataEnd);
+                        } else if (entryEl.id === TRACK_TYPE_ID) {
+                            trackType = readEbmlUnsigned(view, entryEl.dataStart, entryEl.dataEnd);
+                        } else if (entryEl.id === CODEC_ID) {
+                            entryCodecId = readString(view, entryEl.dataStart, entryEl.dataEnd - entryEl.dataStart);
+                        } else if (entryEl.id === VIDEO_ID) {
+                            let videoPtr = entryEl.dataStart;
+                            while (videoPtr < entryEl.dataEnd) {
+                                const videoEl = readEbmlElement(view, videoPtr, entryEl.dataEnd);
+                                if (!videoEl) break;
+                                if (videoEl.id === PIXEL_WIDTH_ID) {
+                                    entryWidth = readEbmlUnsigned(view, videoEl.dataStart, videoEl.dataEnd);
+                                } else if (videoEl.id === PIXEL_HEIGHT_ID) {
+                                    entryHeight = readEbmlUnsigned(view, videoEl.dataStart, videoEl.dataEnd);
+                                } else if (videoEl.id === DISPLAY_WIDTH_ID) {
+                                    displayWidth = readEbmlUnsigned(view, videoEl.dataStart, videoEl.dataEnd);
+                                } else if (videoEl.id === DISPLAY_HEIGHT_ID) {
+                                    displayHeight = readEbmlUnsigned(view, videoEl.dataStart, videoEl.dataEnd);
+                                }
+                                videoPtr = videoEl.dataEnd;
+                            }
+                        }
+                        entryPtr = entryEl.dataEnd;
+                    }
+                    if (trackType === 1) {
+                        videoTrackNumber = trackNumber;
+                        codecId = entryCodecId;
+                        width = entryWidth || displayWidth;
+                        height = entryHeight || displayHeight;
+                    }
+                }
+                trackPtr = trackEl.dataEnd;
+            }
+        }
+        ptr = el.dataEnd;
+    }
+
+    if (!videoTrackNumber || !codecId) {
+        throw new Error('WebM video track not found');
+    }
+
+    let codec;
+    if (codecId === 'V_VP8') {
+        codec = 'vp8';
+    } else if (codecId === 'V_VP9') {
+        codec = 'vp09.00.10.08';
+    } else {
+        throw new Error('WebM codec not supported: ' + codecId);
+    }
+
+    const samples = [];
+    const clusterMarker = [0x1F, 0x43, 0xB6, 0x75];
+    let segPtr = segment.dataStart;
+    while (segPtr < segment.dataEnd) {
+        const el = readEbmlElement(view, segPtr, segment.dataEnd);
+        if (!el) break;
+        if (el.id === CLUSTER_ID) {
+            let clusterEnd = el.dataEnd;
+            if (el.size === -1) {
+                const nextCluster = findSequence(u8, el.dataStart, segment.dataEnd, clusterMarker);
+                clusterEnd = nextCluster === -1 ? segment.dataEnd : nextCluster;
+            }
+            let clusterTimecode = 0;
+            let clusterPtr = el.dataStart;
+            while (clusterPtr < clusterEnd) {
+                const clusterEl = readEbmlElement(view, clusterPtr, clusterEnd);
+                if (!clusterEl) break;
+                if (clusterEl.id === TIMECODE_ID) {
+                    clusterTimecode = readEbmlUnsigned(view, clusterEl.dataStart, clusterEl.dataEnd);
+                } else if (clusterEl.id === SIMPLE_BLOCK_ID) {
+                    const blockSamples = parseSimpleBlock(
+                        buffer,
+                        clusterEl.dataStart,
+                        clusterEl.dataEnd,
+                        clusterTimecode,
+                        timecodeScale,
+                        videoTrackNumber
+                    );
+                    if (blockSamples.length) {
+                        samples.push(...blockSamples);
+                    }
+                } else if (clusterEl.id === BLOCK_GROUP_ID) {
+                    let groupPtr = clusterEl.dataStart;
+                    let block = null;
+                    while (groupPtr < clusterEl.dataEnd) {
+                        const groupEl = readEbmlElement(view, groupPtr, clusterEl.dataEnd);
+                        if (!groupEl) break;
+                        if (groupEl.id === BLOCK_ID) {
+                            block = groupEl;
+                            break;
+                        }
+                        groupPtr = groupEl.dataEnd;
+                    }
+                    if (block) {
+                        const blockSamples = parseSimpleBlock(
+                            buffer,
+                            block.dataStart,
+                            block.dataEnd,
+                            clusterTimecode,
+                            timecodeScale,
+                            videoTrackNumber
+                        );
+                        if (blockSamples.length) {
+                            samples.push(...blockSamples);
+                        }
+                    }
+                }
+                clusterPtr = clusterEl.dataEnd;
+            }
+            if (el.size === -1) {
+                segPtr = clusterEnd;
+                continue;
+            }
+        }
+        segPtr = el.dataEnd;
+    }
+
+    samples.sort((a, b) => a.timestampUs - b.timestampUs);
+    const duration = samples.length ? (samples[samples.length - 1].timestampUs / 1000000) : 0;
+    if (!samples.length) {
+        throw new Error('WebM parsing failed.');
+    }
+
+    return { codec, samples, width, height, duration };
+}
+
+class WebMMuxer {
+    constructor(fps, width, height, duration) {
+        this.data = [];
+        this.width = width;
+        this.height = height;
+        this.duration = duration * 1000;
+        this.clusterTime = 0;
+        this.writeHeader();
+    }
+
+    push(data) {
+        this.data.push(data);
+    }
+
+    writeVarInt(num) {
+        let len = 1;
+        if (num < 127) len = 1;
+        else if (num < 16383) len = 2;
+        else if (num < 2097151) len = 3;
+        else len = 4;
+
+        let arr = [];
+        if (len === 1) {
+            arr.push(num | 0x80);
+        } else if (len === 2) {
+            arr.push((num >> 8) | 0x40, num & 0xFF);
+        } else if (len === 3) {
+            arr.push((num >> 16) | 0x20, (num >> 8) & 0xFF, num & 0xFF);
+        } else {
+            arr.push((num >> 24) | 0x10, (num >> 16) & 0xFF, (num >> 8) & 0xFF, num & 0xFF);
+        }
+        this.push(new Uint8Array(arr));
+    }
+
+    writeHeader() {
+        this.push(new Uint8Array([0x1A, 0x45, 0xDF, 0xA3]));
+        const ebml = [
+            0x42, 0x86, 0x81, 0x01,
+            0x42, 0xF7, 0x81, 0x01,
+            0x42, 0xF2, 0x81, 0x04,
+            0x42, 0xF3, 0x81, 0x08,
+            0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6d,
+            0x42, 0x87, 0x81, 0x02,
+            0x42, 0x85, 0x81, 0x02
+        ];
+        this.writeVarInt(ebml.length);
+        this.push(new Uint8Array(ebml));
+
+        this.push(new Uint8Array([0x18, 0x53, 0x80, 0x67, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]));
+
+        this.push(new Uint8Array([0x15, 0x49, 0xA9, 0x66]));
+        const info = [
+            0x2A, 0xD7, 0xB1, 0x83, 0x0F, 0x42, 0x40,
+            0x4D, 0x80, 0x84, 0x4D, 0x75, 0x78, 0x65,
+            0x57, 0x41, 0x84, 0x4D, 0x75, 0x78, 0x65
+        ];
+
+        if (this.duration > 0) {
+            info.push(0x44, 0x89);
+            const view = new DataView(new ArrayBuffer(4));
+            view.setFloat32(0, this.duration);
+            info.push(0x84, view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+        }
+
+        this.writeVarInt(info.length);
+        this.push(new Uint8Array(info));
+
+        this.push(new Uint8Array([0x16, 0x54, 0xAE, 0x6B]));
+        const trackEntry = [
+            0xD7, 0x81, 0x01,
+            0x73, 0xC5, 0x81, 0x01,
+            0x83, 0x81, 0x01,
+            0x9C, 0x81, 0x00,
+            0x86, 0x85, 0x56, 0x5F, 0x56, 0x50, 0x39,
+            0xE0
+        ];
+
+        const video = [
+            0xB0, 0x82, (this.width >> 8) & 0xFF, this.width & 0xFF,
+            0xBA, 0x82, (this.height >> 8) & 0xFF, this.height & 0xFF
+        ];
+
+        trackEntry.push(0x80 | video.length, ...video);
+        this.writeVarInt(trackEntry.length + 2);
+        this.push(new Uint8Array([0xAE]));
+        this.writeVarInt(trackEntry.length);
+        this.push(new Uint8Array(trackEntry));
+    }
+
+    add(chunk, meta) {
+        const ms = Math.round(chunk.timestamp / 1000);
+        const isKey = chunk.type === 'key';
+
+        if (this.clusterTime === 0 || ms - this.clusterTime > 2000) {
+            this.clusterTime = ms;
+            this.push(new Uint8Array([0x1F, 0x43, 0xB6, 0x75, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]));
+            this.push(new Uint8Array([0xE7]));
+            const tc = Math.round(ms);
+            const tcBytes = [(tc >> 24) & 0xFF, (tc >> 16) & 0xFF, (tc >> 8) & 0xFF, tc & 0xFF];
+            this.writeVarInt(4);
+            this.push(new Uint8Array(tcBytes));
+        }
+
+        const relativeTime = ms - this.clusterTime;
+        if (relativeTime >= 0 && relativeTime < 32767) {
+            this.push(new Uint8Array([0xA3]));
+            const size = 4 + chunk.byteLength;
+            this.writeVarInt(size);
+            this.push(new Uint8Array([
+                0x81,
+                (relativeTime >> 8) & 0xFF,
+                relativeTime & 0xFF,
+                isKey ? 0x80 : 0x00
+            ]));
+
+            const buffer = new Uint8Array(chunk.byteLength);
+            chunk.copyTo(buffer);
+            this.push(buffer);
+        }
+    }
+
+    getBlob() {
+        return new Blob(this.data, { type: 'video/webm' });
+    }
+}
+
+function createEncodingCanvas(width, height) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    return { canvas, ctx: canvas.getContext('2d', { willReadFrequently: true }) };
+}
+
+async function demuxVideoFile(videoFile) {
+    const buffer = await videoFile.arrayBuffer();
+    const lowerName = (videoFile.name || '').toLowerCase();
+    if (videoFile.type === 'video/webm' || lowerName.endsWith('.webm')) {
+        return parseWebm(buffer);
+    }
+    return parseMp4(buffer);
+}
+
+async function decodeFramesFromDemux(demuxed, fps, options = {}) {
+    if (!demuxed || !demuxed.samples || !demuxed.samples.length) {
+        throw new Error('Clip has no decodable samples.');
+    }
+    const onProgress = options.onProgress;
+    const targetIntervalUs = 1000000 / fps;
+    const expectedFrames = demuxed.duration ? Math.max(1, Math.round(demuxed.duration * fps)) : 0;
+    let outputWidth = demuxed.width || 0;
+    let outputHeight = demuxed.height || 0;
+
+    async function decodePass(captureAll) {
+        let nextTargetUs = 0;
+        const frames = [];
+        const pending = [];
+        let decoderError = null;
+
+        const decoder = new VideoDecoder({
+            output: (frame) => {
+                const timestampUs = frame.timestamp;
+                if (captureAll || (timestampUs + targetIntervalUs / 2 >= nextTargetUs)) {
+                    const promise = createImageBitmap(frame).then(bitmap => {
+                        frames.push(bitmap);
+                        outputWidth = outputWidth || frame.displayWidth || frame.codedWidth;
+                        outputHeight = outputHeight || frame.displayHeight || frame.codedHeight;
+                    }).finally(() => frame.close());
+                    pending.push(promise);
+                    if (!captureAll) {
+                        nextTargetUs += targetIntervalUs;
+                    }
+                } else {
+                    frame.close();
+                }
+            },
+            error: e => { decoderError = e; }
+        });
+
+        const config = { codec: demuxed.codec };
+        if (demuxed.description) {
+            config.description = demuxed.description;
+        }
+        if (demuxed.width && demuxed.height) {
+            config.codedWidth = demuxed.width;
+            config.codedHeight = demuxed.height;
+        }
+        if (VideoDecoder.isConfigSupported) {
+            const support = await VideoDecoder.isConfigSupported(config);
+            if (!support.supported) {
+                decoder.close();
+                throw new Error('Decoder not supported for this clip.');
+            }
+        }
+        decoder.configure(config);
+
+        for (let i = 0; i < demuxed.samples.length; i++) {
+            const sample = demuxed.samples[i];
+            const timestamp = Math.round(Number(sample.timestampUs));
+            if (!Number.isFinite(timestamp)) {
+                throw new Error('Invalid sample timestamp at index ' + i);
+            }
+            decoder.decode(new EncodedVideoChunk({
+                type: sample.type,
+                timestamp: timestamp,
+                data: sample.data
+            }));
+            if (decoderError) {
+                throw new Error('Decoder error: ' + (decoderError.message || decoderError.name || 'Unknown'));
+            }
+            if (onProgress) {
+                onProgress({
+                    decodedFrames: frames.length,
+                    expectedFrames,
+                    sampleIndex: i + 1,
+                    totalSamples: demuxed.samples.length
+                });
+            }
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        await decoder.flush();
+        await Promise.all(pending);
+        decoder.close();
+        return frames;
+    }
+
+    let frames = await decodePass(false);
+    if (frames && frames.length <= 1 && demuxed.samples.length > 1) {
+        frames = await decodePass(true);
+    }
+    if (!frames || !frames.length) {
+        throw new Error('No frames decoded.');
+    }
+    return {
+        frames,
+        expectedFrames,
+        width: outputWidth || demuxed.width,
+        height: outputHeight || demuxed.height,
+        duration: demuxed.duration
+    };
+}
+
+async function extractFramesWithWebCodecs(videoFile, fps, options = {}) {
+    const demuxed = options.demuxed || await demuxVideoFile(videoFile);
+    const result = await decodeFramesFromDemux(demuxed, fps, options);
+    return { ...result, demuxed };
+}
+
+async function extractFrames(videoFile, fps, options = {}) {
+    if (typeof VideoDecoder === 'function') {
+        return extractFramesWithWebCodecs(videoFile, fps, options);
+    }
+    throw new Error('WebCodecs VideoDecoder is not available.');
+}
+
+async function encodeFramesWithCanvas(options) {
+    const width = options.width;
+    const height = options.height;
+    const fps = options.fps;
+    const bitrate = options.bitrate;
+    const frameCount = options.frameCount;
+    const getFrame = options.getFrame;
+    const drawFrame = options.drawFrame;
+    const onProgress = options.onProgress;
+
+    const muxer = new WebMMuxer(fps, width, height, frameCount / fps);
+    const encoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.add(chunk, meta),
+        error: e => { throw e; }
+    });
+
+    const encoderConfig = {
+        codec: 'vp09.00.10.08',
+        width: width,
+        height: height,
+        bitrate: bitrate,
+        framerate: fps
+    };
+    if (VideoEncoder.isConfigSupported) {
+        const support = await VideoEncoder.isConfigSupported(encoderConfig);
+        if (!support.supported) {
+            throw new Error('Encoder config not supported for codec: ' + encoderConfig.codec);
+        }
+    }
+    encoder.configure(encoderConfig);
+
+    const { canvas, ctx } = createEncodingCanvas(width, height);
+    for (let i = 0; i < frameCount; i++) {
+        const frame = getFrame(i);
+        if (!frame) {
+            throw new Error('Frame not available at index ' + i);
+        }
+        if (drawFrame) {
+            drawFrame(ctx, frame, i);
+        } else {
+            ctx.drawImage(frame, 0, 0, width, height);
+        }
+        const videoFrame = new VideoFrame(canvas, { timestamp: i * (1000000 / fps) });
+        encoder.encode(videoFrame, { keyFrame: i % (fps * 2) === 0 });
+        videoFrame.close();
+        if (onProgress) {
+            onProgress({ encodedFrames: i + 1, totalFrames: frameCount });
+        }
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    await encoder.flush();
+    encoder.close();
+    return muxer.getBlob();
+}
+
+function createFramePlayback(options) {
+    const getTotalFrames = options.getTotalFrames;
+    const getCurrentFrame = options.getCurrentFrame;
+    const drawFrame = options.drawFrame;
+    const getFps = options.getFps;
+    const onStart = options.onStart;
+    const onStop = options.onStop;
+
+    let playing = false;
+    let interval = null;
+
+    function start() {
+        if (playing) return;
+        const total = getTotalFrames();
+        if (!total) return;
+        playing = true;
+        if (onStart) onStart();
+        const frameTime = 1000 / (getFps() || 1);
+        interval = setInterval(() => {
+            const currentTotal = getTotalFrames();
+            if (!currentTotal) {
+                stop();
+                return;
+            }
+            let current = getCurrentFrame();
+            if (!Number.isFinite(current) || current < 0 || current >= currentTotal) {
+                current = 0;
+            }
+            const next = current >= currentTotal - 1 ? 0 : current + 1;
+            drawFrame(next);
+        }, frameTime);
+    }
+
+    function stop() {
+        playing = false;
+        if (onStop) onStop();
+        if (interval) {
+            clearInterval(interval);
+            interval = null;
+        }
+    }
+
+    function toggle() {
+        if (playing) {
+            stop();
+        } else {
+            start();
+        }
+    }
+
+    return { start, stop, toggle, isPlaying: () => playing };
+}

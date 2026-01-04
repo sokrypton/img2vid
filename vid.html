@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Editor</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            max-width: 900px;
+            margin: 0;
+            padding: 15px;
+            background: #f5f5f5;
+        }
+
+        @media (min-width: 768px) {
+            body {
+                margin: 40px auto;
+                padding: 20px;
+            }
+        }
+
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 20px;
+        }
+
+        h2 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+            min-height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .upload-area:hover {
+            border-color: #007bff;
+            background: #f8f9fa;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .info {
+            margin-top: 15px;
+            padding: 12px;
+            background: #e7f3ff;
+            border-radius: 4px;
+            font-size: 14px;
+            word-break: break-word;
+            color: #666;
+        }
+
+        .loading {
+            margin-top: 15px;
+            padding: 12px;
+            background: #fff3cd;
+            border-radius: 4px;
+            display: none;
+            font-size: 14px;
+            text-align: center;
+            color: #856404;
+            font-weight: bold;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .controls {
+            margin-top: 10px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .control-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            font-size: 14px;
+            color: #666;
+            font-weight: 600;
+        }
+
+        select, input[type="number"] {
+            font-size: 16px;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+        }
+
+        button {
+            padding: 12px 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            min-height: 44px;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        button.primary {
+            background: #007bff;
+            color: white;
+        }
+
+        button.primary:hover:not(:disabled) {
+            background: #0056b3;
+        }
+
+        button.secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        button.secondary:hover:not(:disabled) {
+            background: #545b62;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .clip-list {
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .clip-card {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 12px;
+            background: #fff;
+        }
+
+        .clip-header {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .clip-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+        }
+
+        .clip-meta {
+            font-size: 12px;
+            color: #888;
+            margin-top: 6px;
+        }
+
+        .clip-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .clip-controls input[type="number"] {
+            width: 90px;
+        }
+
+        .preview input[type="number"] {
+            width: 85px;
+        }
+
+        .progress {
+            display: none;
+            margin-top: 10px;
+        }
+
+        .progress .bar {
+            height: 6px;
+            background: #007bff;
+            width: 0%;
+            transition: width 0.2s;
+        }
+
+        .progress .track {
+            height: 6px;
+            background: #eceff1;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .preview {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .preview canvas {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .preview-stage {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
+        }
+
+        .crop-overlay {
+            position: absolute;
+            border: 2px solid #00bcd4;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.25);
+            touch-action: none;
+        }
+
+        .crop-handle {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background: #00bcd4;
+            clip-path: polygon(0 0, 100% 0, 0 100%);
+            touch-action: none;
+        }
+
+        .crop-handle.tl { left: -2px; top: -2px; cursor: nwse-resize; transform: rotate(0deg); }
+        .crop-handle.tr { right: -2px; top: -2px; cursor: nesw-resize; transform: rotate(90deg); }
+        .crop-handle.br { right: -2px; bottom: -2px; cursor: nwse-resize; transform: rotate(180deg); }
+        .crop-handle.bl { left: -2px; bottom: -2px; cursor: nesw-resize; transform: rotate(270deg); }
+
+        .crop-handle.edge-top,
+        .crop-handle.edge-bottom {
+            width: 50px;
+            height: 8px;
+            background: #00bcd4;
+            clip-path: none;
+            border-radius: 6px;
+        }
+
+        .crop-handle.edge-left,
+        .crop-handle.edge-right {
+            width: 8px;
+            height: 50px;
+            background: #00bcd4;
+            clip-path: none;
+            border-radius: 6px;
+        }
+
+        .crop-handle.edge-top { top: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .crop-handle.edge-bottom { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .crop-handle.edge-left { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+        .crop-handle.edge-right { right: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+
+        .frame-viewer {
+            margin-top: 12px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .frame-canvas {
+            width: 100%;
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #000;
+            display: block;
+        }
+
+        .frame-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .frame-controls input[type="range"] {
+            width: 100%;
+        }
+
+        .frame-viewer input[type="range"] {
+            width: 100%;
+            display: block;
+        }
+
+        .frame-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Video Editor</h1>
+
+        <div class="upload-area" id="uploadArea">
+            <p>Click or drag to upload multiple MP4/WebM files</p>
+            <input type="file" id="fileInput" accept="video/mp4,video/webm,video/quicktime" multiple>
+        </div>
+
+        <div class="controls">
+            <div class="control-row">
+                <label for="fpsSelector">Output FPS:</label>
+                <select id="fpsSelector">
+                    <option value="16" selected>16 fps</option>
+                    <option value="24">24 fps</option>
+                    <option value="30">30 fps</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="info" id="info">Upload at least one clip to edit or merge.</div>
+        <div class="loading" id="loading">Working…</div>
+        <div class="progress" id="progressContainer">
+            <div class="track">
+                <div class="bar" id="progressBar"></div>
+            </div>
+        </div>
+
+        <div class="clip-list" id="clipList"></div>
+
+        <div class="preview" id="preview" style="display:none;">
+            <div style="margin-bottom:8px; font-size:13px; color:#666;">
+                Preview Frame <span id="globalPreviewCounter">0 / 0</span>
+            </div>
+            <div class="preview-stage" id="previewStage">
+                <canvas id="globalPreviewCanvas" class="frame-canvas"></canvas>
+                <div id="cropOverlay" class="crop-overlay" style="display:none;">
+                    <div class="crop-handle tl" data-handle="tl"></div>
+                    <div class="crop-handle tr" data-handle="tr"></div>
+                    <div class="crop-handle bl" data-handle="bl"></div>
+                    <div class="crop-handle br" data-handle="br"></div>
+                    <div class="crop-handle edge-top" data-handle="t"></div>
+                    <div class="crop-handle edge-right" data-handle="r"></div>
+                    <div class="crop-handle edge-bottom" data-handle="b"></div>
+                    <div class="crop-handle edge-left" data-handle="l"></div>
+                </div>
+            </div>
+            <input type="range" id="globalPreviewScrubber" min="0" max="0" value="0" style="margin-top:10px; width:100%;">
+            <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin-top:10px; flex-wrap:wrap;">
+                <label>Crop Top</label>
+                <input type="number" id="cropTopInput" min="0" value="0">
+                <label>Crop Bottom</label>
+                <input type="number" id="cropBottomInput" min="0" value="0">
+                <label>Crop Left</label>
+                <input type="number" id="cropLeftInput" min="0" value="0">
+                <label>Crop Right</label>
+                <input type="number" id="cropRightInput" min="0" value="0">
+            </div>
+            <div style="display:flex; justify-content:center; margin-top:10px;">
+                <button class="primary" id="globalPreviewPlayBtn">Play</button>
+            </div>
+        </div>
+
+        <div class="controls" id="downloadControls" style="margin-top:15px; display:none;">
+            <div class="control-row">
+                <label for="bitrateSelector">Bitrate:</label>
+                <select id="bitrateSelector">
+                    <option value="2000000">2 Mbps</option>
+                    <option value="4000000">4 Mbps</option>
+                    <option value="6000000" selected>6 Mbps</option>
+                    <option value="8000000">8 Mbps</option>
+                    <option value="12000000">12 Mbps</option>
+                </select>
+                <label for="fitSelector">Scaling:</label>
+                <select id="fitSelector">
+                    <option value="contain" selected>Contain (black bars)</option>
+                    <option value="cover">Cover (crop)</option>
+                </select>
+            </div>
+            <div class="control-row">
+                <button class="primary" id="mergeBtnBottom">Download</button>
+                <button class="secondary" id="clearBtnBottom">Clear</button>
+            </div>
+        </div>
+
+
+        <a id="downloadLink" style="display:none;"></a>
+    </div>
+
+    <script src="shared.js"></script>
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const clipList = document.getElementById('clipList');
+        const fpsSelector = document.getElementById('fpsSelector');
+        const bitrateSelector = document.getElementById('bitrateSelector');
+        const fitSelector = document.getElementById('fitSelector');
+        const mergeBtnBottom = document.getElementById('mergeBtnBottom');
+        const clearBtnBottom = document.getElementById('clearBtnBottom');
+        const downloadControls = document.getElementById('downloadControls');
+        const info = document.getElementById('info');
+        const loading = document.getElementById('loading');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const downloadLink = document.getElementById('downloadLink');
+        const preview = document.getElementById('preview');
+        const globalPreviewCanvas = document.getElementById('globalPreviewCanvas');
+        const globalPreviewScrubber = document.getElementById('globalPreviewScrubber');
+        const globalPreviewCounter = document.getElementById('globalPreviewCounter');
+        const globalPreviewPlayBtn = document.getElementById('globalPreviewPlayBtn');
+        const previewStage = document.getElementById('previewStage');
+        const cropOverlay = document.getElementById('cropOverlay');
+        const cropTopInput = document.getElementById('cropTopInput');
+        const cropBottomInput = document.getElementById('cropBottomInput');
+        const cropLeftInput = document.getElementById('cropLeftInput');
+        const cropRightInput = document.getElementById('cropRightInput');
+
+        let clips = [];
+
+        function setStatus(message) {
+            info.textContent = message;
+        }
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => e.preventDefault());
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) addFiles(e.target.files);
+        });
+
+        fpsSelector.addEventListener('change', () => {
+            const fps = parseInt(fpsSelector.value, 10) || 16;
+            clips.forEach(clip => {
+                clip.totalFrames = Math.max(1, Math.round(clip.duration * fps));
+                clip.startFrame = Math.min(clip.startFrame, clip.totalFrames - 1);
+                clip.endFrame = Math.min(clip.endFrame, clip.totalFrames - 1);
+                clip.frames = null;
+                clip.viewerOpen = false;
+                clip.currentFrame = 0;
+            });
+            renderClips();
+        });
+
+        mergeBtnBottom.addEventListener('click', () => mergeClips());
+        clearBtnBottom.addEventListener('click', reset);
+        globalPreviewScrubber.addEventListener('input', () => {
+            previewPlayback.stop();
+            const frameIndex = parseInt(globalPreviewScrubber.value, 10) || 0;
+            drawMergedFrame(frameIndex);
+        });
+        globalPreviewPlayBtn.addEventListener('click', () => previewPlayback.toggle());
+        cropTopInput.addEventListener('change', () => updateCropFromInputs());
+        cropBottomInput.addEventListener('change', () => updateCropFromInputs());
+        cropLeftInput.addEventListener('change', () => updateCropFromInputs());
+        cropRightInput.addEventListener('change', () => updateCropFromInputs());
+
+        function reset() {
+            clips = [];
+            clipList.innerHTML = '';
+            preview.style.display = 'none';
+            if (globalPreviewCanvas) {
+                const ctx = globalPreviewCanvas.getContext('2d');
+                ctx.clearRect(0, 0, globalPreviewCanvas.width, globalPreviewCanvas.height);
+            }
+            downloadLink.href = '';
+            fileInput.value = '';
+            progressContainer.style.display = 'none';
+            progressBar.style.width = '0%';
+            downloadControls.style.display = 'none';
+            fpsSelector.disabled = false;
+            fpsSelector.style.opacity = '1';
+            previewPlayback.stop();
+            cropRect = null;
+            hideCropOverlay();
+            setStatus('Upload at least one clip to edit or merge.');
+        }
+
+        async function addFiles(fileList) {
+            const files = Array.from(fileList).filter(file =>
+                file.type === 'video/mp4' || file.type === 'video/webm' || file.name.toLowerCase().endsWith('.webm') || file.name.toLowerCase().endsWith('.mp4')
+            );
+            if (!files.length) {
+                setStatus('Please upload MP4 or WebM files.');
+                return;
+            }
+            loading.classList.add('active');
+            loading.textContent = 'Reading files...';
+
+            for (const file of files) {
+                try {
+                    const buffer = await file.arrayBuffer();
+                    const lowerName = (file.name || '').toLowerCase();
+                    const demuxed = (file.type === 'video/webm' || lowerName.endsWith('.webm'))
+                        ? parseWebm(buffer)
+                        : parseMp4(buffer);
+                    let width = demuxed.width;
+                    let height = demuxed.height;
+                    let duration = demuxed.duration;
+                    if (!width || !height) {
+                        const meta = await getVideoMetadata(file);
+                        width = meta.width || width;
+                        height = meta.height || height;
+                        if (!duration && meta.duration) {
+                            duration = meta.duration;
+                        }
+                    }
+                    const fps = parseInt(fpsSelector.value, 10) || 16;
+                    const totalFrames = Math.max(1, Math.round(duration * fps));
+                    const bitrate = estimateBitrate(file.size, duration);
+                    const fpsEstimate = estimateFps(demuxed);
+                    clips.push({
+                        id: Math.random().toString(36).slice(2),
+                        file: file,
+                        buffer: buffer,
+                        demuxed: demuxed,
+                        name: file.name,
+                        width: width,
+                        height: height,
+                        duration: duration,
+                        nativeFps: fpsEstimate,
+                        bitrate: bitrate,
+                        totalFrames: totalFrames,
+                        startFrame: 0,
+                        endFrame: totalFrames - 1,
+                        frames: null,
+                        viewerOpen: false,
+                        currentFrame: 0
+                    });
+                } catch (error) {
+                    console.error('Failed to parse', file.name, error);
+                    setStatus('Failed to parse one or more files.');
+                }
+            }
+
+            loading.classList.remove('active');
+            setStatus('Extracting frames for clips...');
+            renderClips();
+
+            const newClips = clips.filter(clip => !clip.frames);
+            for (const clip of newClips) {
+                await loadClipFrames(clip);
+                clip.viewerOpen = true;
+                renderClips();
+            }
+            fpsSelector.disabled = true;
+            fpsSelector.style.opacity = '0.6';
+            downloadControls.style.display = 'block';
+            setStatus('Adjust start/end frames, reorder clips, then merge.');
+        }
+
+        function getVideoMetadata(file) {
+            return new Promise((resolve) => {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                const url = URL.createObjectURL(file);
+                video.src = url;
+                video.onloadedmetadata = () => {
+                    URL.revokeObjectURL(url);
+                    resolve({
+                        width: video.videoWidth,
+                        height: video.videoHeight,
+                        duration: video.duration
+                    });
+                };
+                video.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    resolve({ width: 0, height: 0, duration: 0 });
+                };
+            });
+        }
+
+        function renderClips() {
+            clipList.innerHTML = '';
+            clips.forEach((clip, index) => {
+                const card = document.createElement('div');
+                card.className = 'clip-card';
+                const frameInfo = clip.frames ? `cached ${clip.frames.length} frames` : 'frames not loaded';
+                const viewerHtml = clip.viewerOpen ? `
+                    <div class="frame-viewer">
+                        <canvas class="frame-canvas" id="frameCanvas-${clip.id}"></canvas>
+                        <div class="frame-controls">
+                            <button class="secondary" data-action="frame-back">‹</button>
+                            <div id="frameCounter-${clip.id}">Frame ${clip.currentFrame + 1} / ${clip.totalFrames}</div>
+                            <button class="secondary" data-action="frame-forward">›</button>
+                        </div>
+                        <input type="range" id="frameScrubber-${clip.id}" min="0" max="${clip.totalFrames - 1}" value="${clip.currentFrame}">
+                        <div class="frame-actions">
+                            <button class="secondary" data-action="set-start">Set Start</button>
+                            <input type="number" data-field="start" min="0" max="${clip.totalFrames - 1}" value="${clip.startFrame}">
+                            <button class="secondary" data-action="set-end">Set End</button>
+                            <input type="number" data-field="end" min="0" max="${clip.totalFrames - 1}" value="${clip.endFrame}">
+                        </div>
+                    </div>
+                ` : '';
+                card.innerHTML = `
+                    <div class="clip-header">
+                        <div class="clip-title">${clip.name}</div>
+                        <div>
+                            <button class="secondary" data-action="frames">${clip.viewerOpen ? 'Hide' : 'Show'}</button>
+                            <button class="secondary" data-action="up">↑</button>
+                            <button class="secondary" data-action="down">↓</button>
+                            <button class="secondary" data-action="remove">✕</button>
+                        </div>
+                    </div>
+                    <div class="clip-meta">
+                        ${clip.width}×${clip.height}
+                        ${clip.nativeFps ? `• ${clip.nativeFps.toFixed(2)} fps` : ''}
+                        ${clip.bitrate ? `• ${formatBitrateMbps(clip.bitrate, 1)}` : ''} • ${frameInfo}
+                    </div>
+                    ${viewerHtml}
+                `;
+                card.addEventListener('click', (e) => {
+                    const action = e.target.getAttribute('data-action');
+                    if (action === 'up' && index > 0) {
+                        const tmp = clips[index - 1];
+                        clips[index - 1] = clips[index];
+                        clips[index] = tmp;
+                        renderClips();
+                        return;
+                    }
+                    if (action === 'down' && index < clips.length - 1) {
+                        const tmp = clips[index + 1];
+                        clips[index + 1] = clips[index];
+                        clips[index] = tmp;
+                        renderClips();
+                        return;
+                    }
+                    if (action === 'remove') {
+                        clips.splice(index, 1);
+                        renderClips();
+                        return;
+                    }
+                    if (action === 'frames') {
+                        previewPlayback.stop();
+                        clip.viewerOpen = !clip.viewerOpen;
+                        if (clip.viewerOpen && !clip.frames) {
+                            loadClipFrames(clip).then(renderClips);
+                            return;
+                        }
+                        renderClips();
+                        return;
+                    }
+                    if (action === 'frame-back' && clip.frames) {
+                        previewPlayback.stop();
+                        clip.currentFrame = Math.max(0, clip.currentFrame - 1);
+                        drawClipFrame(clip);
+                        return;
+                    }
+                    if (action === 'frame-forward' && clip.frames) {
+                        previewPlayback.stop();
+                        clip.currentFrame = Math.min(clip.totalFrames - 1, clip.currentFrame + 1);
+                        drawClipFrame(clip);
+                        return;
+                    }
+                    if (action === 'set-start') {
+                        previewPlayback.stop();
+                        clip.startFrame = clip.currentFrame;
+                        if (clip.startFrame > clip.endFrame) clip.endFrame = clip.startFrame;
+                        renderClips();
+                        return;
+                    }
+                    if (action === 'set-end') {
+                        previewPlayback.stop();
+                        clip.endFrame = clip.currentFrame;
+                        if (clip.endFrame < clip.startFrame) clip.startFrame = clip.endFrame;
+                        renderClips();
+                        return;
+                    }
+                });
+                card.querySelectorAll('input[type="number"]').forEach(input => {
+                    input.addEventListener('change', () => {
+                        const field = input.getAttribute('data-field');
+                        const value = parseInt(input.value, 10);
+                        if (Number.isNaN(value)) return;
+                        if (field === 'start') {
+                            clip.startFrame = Math.max(0, Math.min(value, clip.totalFrames - 1));
+                            if (clip.startFrame > clip.endFrame) clip.endFrame = clip.startFrame;
+                        } else {
+                            clip.endFrame = Math.max(0, Math.min(value, clip.totalFrames - 1));
+                            if (clip.endFrame < clip.startFrame) clip.startFrame = clip.endFrame;
+                        }
+                        renderClips();
+                    });
+                });
+                const scrubber = card.querySelector(`#frameScrubber-${clip.id}`);
+                if (scrubber) {
+                    scrubber.addEventListener('input', () => {
+                        previewPlayback.stop();
+                        clip.currentFrame = parseInt(scrubber.value, 10) || 0;
+                        drawClipFrame(clip);
+                    });
+                }
+                clipList.appendChild(card);
+                if (clip.viewerOpen && clip.frames) {
+                    drawClipFrame(clip);
+                }
+            });
+            refreshGlobalPreview();
+        }
+
+        async function loadClipFrames(clip) {
+            if (clip.frames) return;
+            const fps = parseInt(fpsSelector.value, 10) || 16;
+            const demuxed = clip.demuxed;
+            if (!demuxed || !demuxed.samples.length) {
+                setStatus('Clip has no decodable samples.');
+                return;
+            }
+            loading.classList.add('active');
+            loading.textContent = `Extracting frames: ${clip.name}`;
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+
+            try {
+                const result = await decodeFramesFromDemux(demuxed, fps, {
+                    onProgress: ({ decodedFrames, expectedFrames, sampleIndex, totalSamples }) => {
+                        const progress = expectedFrames
+                            ? Math.round((decodedFrames / expectedFrames) * 100)
+                            : Math.round((sampleIndex / totalSamples) * 100);
+                        progressBar.style.width = `${Math.min(progress, 100)}%`;
+                        loading.textContent = expectedFrames
+                            ? `Extracting frames: ${Math.min(decodedFrames, expectedFrames)}/${expectedFrames}`
+                            : `Decoding samples: ${sampleIndex}/${totalSamples}`;
+                    }
+                });
+
+                clip.frames = result.frames;
+                clip.currentFrame = 0;
+                clip.totalFrames = result.frames.length || clip.totalFrames;
+                clip.endFrame = Math.min(clip.endFrame, clip.totalFrames - 1);
+                clip.startFrame = Math.min(clip.startFrame, clip.totalFrames - 1);
+            } catch (error) {
+                console.error('Decode failed for clip', error);
+                setStatus('No frames decoded for this clip.');
+            } finally {
+                loading.classList.remove('active');
+                progressContainer.style.display = 'none';
+            }
+        }
+
+        function drawClipFrame(clip) {
+            const canvas = document.getElementById(`frameCanvas-${clip.id}`);
+            const scrubber = document.getElementById(`frameScrubber-${clip.id}`);
+            const counter = document.getElementById(`frameCounter-${clip.id}`);
+            if (!canvas || !clip.frames || !clip.frames.length) return;
+            const ctx = canvas.getContext('2d');
+            const frame = clip.frames[clip.currentFrame];
+            canvas.width = frame.width;
+            canvas.height = frame.height;
+            ctx.drawImage(frame, 0, 0);
+            if (scrubber) scrubber.value = clip.currentFrame;
+            if (counter) counter.textContent = `Frame ${clip.currentFrame + 1} / ${clip.totalFrames}`;
+        }
+
+        function refreshGlobalPreview() {
+            const merged = getMergedSegments();
+            if (!merged.totalFrames) {
+                preview.style.display = 'none';
+                globalPreviewCounter.textContent = '0 / 0';
+                globalPreviewScrubber.value = '0';
+                globalPreviewScrubber.max = '0';
+                previewPlayback.stop();
+                return;
+            }
+            preview.style.display = 'block';
+            const current = Math.min(parseInt(globalPreviewScrubber.value, 10) || 0, merged.totalFrames - 1);
+            globalPreviewScrubber.max = String(merged.totalFrames - 1);
+            globalPreviewScrubber.value = String(current);
+            drawMergedFrame(current);
+        }
+
+        function getMergedSegments() {
+            let cursor = 0;
+            const segments = [];
+            for (const clip of clips) {
+                if (!clip.frames || !clip.frames.length) {
+                    continue;
+                }
+                const length = Math.max(0, clip.endFrame - clip.startFrame + 1);
+                if (!length) continue;
+                segments.push({
+                    clip: clip,
+                    start: cursor,
+                    end: cursor + length - 1
+                });
+                cursor += length;
+            }
+            return { segments, totalFrames: cursor };
+        }
+
+        let previewBaseCanvas = null;
+        let previewBaseCtx = null;
+
+        function getOutputDimensions() {
+            let outputWidth = clips[0] ? clips[0].width : 0;
+            let outputHeight = clips[0] ? clips[0].height : 0;
+            for (const clip of clips) {
+                if (clip.width && clip.height) {
+                    outputWidth = clip.width;
+                    outputHeight = clip.height;
+                    break;
+                }
+            }
+            return { outputWidth, outputHeight };
+        }
+
+        function drawMergedFrame(globalFrameIndex) {
+            const merged = getMergedSegments();
+            if (!merged.totalFrames) return;
+            const { outputWidth, outputHeight } = getOutputDimensions();
+            if (!outputWidth || !outputHeight) return;
+            const fitMode = fitSelector.value || 'contain';
+            const clamped = Math.max(0, Math.min(globalFrameIndex, merged.totalFrames - 1));
+            let selected = null;
+            for (const segment of merged.segments) {
+                if (clamped >= segment.start && clamped <= segment.end) {
+                    selected = segment;
+                    break;
+                }
+            }
+            if (!selected) return;
+            const localIndex = selected.clip.startFrame + (clamped - selected.start);
+            const frame = selected.clip.frames[localIndex];
+            if (!frame) return;
+
+            const ctx = globalPreviewCanvas.getContext('2d');
+            globalPreviewCanvas.width = outputWidth;
+            globalPreviewCanvas.height = outputHeight;
+            drawFrameToCanvas(ctx, frame, outputWidth, outputHeight, fitMode);
+            globalPreviewCounter.textContent = `${clamped + 1} / ${merged.totalFrames}`;
+            globalPreviewScrubber.value = String(clamped);
+            ensureCropRect(outputWidth, outputHeight);
+            updateCropOverlay();
+        }
+
+        const previewPlayback = createFramePlayback({
+            getTotalFrames: () => getMergedSegments().totalFrames,
+            getCurrentFrame: () => parseInt(globalPreviewScrubber.value, 10) || 0,
+            drawFrame: (index) => drawMergedFrame(index),
+            getFps: () => parseInt(fpsSelector.value, 10) || 16,
+            onStart: () => { globalPreviewPlayBtn.textContent = 'Pause'; },
+            onStop: () => { globalPreviewPlayBtn.textContent = 'Play'; }
+        });
+
+        let cropRect = null;
+        let cropDragState = null;
+
+        function ensureCropRect(width, height) {
+            if (cropRect && cropRect.w > 0 && cropRect.h > 0) return;
+            const defaultCropBottom = 0;
+            const cropHeight = Math.max(1, height - defaultCropBottom);
+            cropRect = { x: 0, y: 0, w: width, h: cropHeight };
+        }
+
+        function updateCropOverlay() {
+            if (!cropRect || !globalPreviewCanvas) return;
+            const canvasRect = globalPreviewCanvas.getBoundingClientRect();
+            const stageRect = previewStage.getBoundingClientRect();
+            if (!canvasRect.width || !canvasRect.height) return;
+            const scaleX = canvasRect.width / globalPreviewCanvas.width;
+            const scaleY = canvasRect.height / globalPreviewCanvas.height;
+            const offsetX = canvasRect.left - stageRect.left;
+            const offsetY = canvasRect.top - stageRect.top;
+            cropOverlay.style.display = 'block';
+            cropOverlay.style.left = `${offsetX + cropRect.x * scaleX}px`;
+            cropOverlay.style.top = `${offsetY + cropRect.y * scaleY}px`;
+            cropOverlay.style.width = `${cropRect.w * scaleX}px`;
+            cropOverlay.style.height = `${cropRect.h * scaleY}px`;
+            const maxW = globalPreviewCanvas.width || 0;
+            const maxH = globalPreviewCanvas.height || 0;
+            cropTopInput.value = Math.round(cropRect.y);
+            cropLeftInput.value = Math.round(cropRect.x);
+            cropBottomInput.value = Math.max(0, Math.round(maxH - (cropRect.y + cropRect.h)));
+            cropRightInput.value = Math.max(0, Math.round(maxW - (cropRect.x + cropRect.w)));
+        }
+
+        function hideCropOverlay() {
+            cropOverlay.style.display = 'none';
+        }
+
+        function updateCropFromInputs() {
+            if (!cropRect) return;
+            const maxW = globalPreviewCanvas.width || 0;
+            const maxH = globalPreviewCanvas.height || 0;
+            const top = Math.max(0, Math.min(parseInt(cropTopInput.value, 10) || 0, maxH - 1));
+            const bottom = Math.max(0, Math.min(parseInt(cropBottomInput.value, 10) || 0, maxH - 1));
+            const left = Math.max(0, Math.min(parseInt(cropLeftInput.value, 10) || 0, maxW - 1));
+            const right = Math.max(0, Math.min(parseInt(cropRightInput.value, 10) || 0, maxW - 1));
+
+            const x = Math.min(left, maxW - 1);
+            const y = Math.min(top, maxH - 1);
+            const w = Math.max(1, maxW - left - right);
+            const h = Math.max(1, maxH - top - bottom);
+            cropRect = clampCropRect({ x, y, w, h }, maxW, maxH);
+            updateCropOverlay();
+        }
+
+        function clampCropRect(rect, maxW, maxH) {
+            const x = Math.max(0, Math.min(rect.x, maxW - 1));
+            const y = Math.max(0, Math.min(rect.y, maxH - 1));
+            const w = Math.max(1, Math.min(rect.w, maxW - x));
+            const h = Math.max(1, Math.min(rect.h, maxH - y));
+            return { x, y, w, h };
+        }
+
+        function startCropDrag(e, handle) {
+            if (!cropRect) return;
+            e.preventDefault();
+            const rect = globalPreviewCanvas.getBoundingClientRect();
+            cropDragState = {
+                handle,
+                startX: e.clientX,
+                startY: e.clientY,
+                orig: { ...cropRect },
+                scaleX: globalPreviewCanvas.width / rect.width,
+                scaleY: globalPreviewCanvas.height / rect.height
+            };
+        }
+
+        function moveCropDrag(e) {
+            if (!cropDragState || !cropRect) return;
+            const dx = (e.clientX - cropDragState.startX) * cropDragState.scaleX;
+            const dy = (e.clientY - cropDragState.startY) * cropDragState.scaleY;
+            const maxW = globalPreviewCanvas.width;
+            const maxH = globalPreviewCanvas.height;
+            let rect = { ...cropDragState.orig };
+
+            if (cropDragState.handle === 'move') {
+                rect.x += dx;
+                rect.y += dy;
+            } else {
+                if (cropDragState.handle.includes('l')) {
+                    rect.x += dx;
+                    rect.w -= dx;
+                }
+                if (cropDragState.handle.includes('r')) {
+                    rect.w += dx;
+                }
+                if (cropDragState.handle.includes('t')) {
+                    rect.y += dy;
+                    rect.h -= dy;
+                }
+                if (cropDragState.handle.includes('b')) {
+                    rect.h += dy;
+                }
+            }
+            if (rect.x < 0) {
+                if (cropDragState.handle === 'move') {
+                    rect.x = 0;
+                } else if (cropDragState.handle.includes('l')) {
+                    rect.w = cropDragState.orig.w + cropDragState.orig.x;
+                    rect.x = 0;
+                }
+            }
+            if (rect.y < 0) {
+                if (cropDragState.handle === 'move') {
+                    rect.y = 0;
+                } else if (cropDragState.handle.includes('t')) {
+                    rect.h = cropDragState.orig.h + cropDragState.orig.y;
+                    rect.y = 0;
+                }
+            }
+            if (rect.x + rect.w > maxW) {
+                if (cropDragState.handle === 'move') {
+                    rect.x = Math.max(0, maxW - rect.w);
+                } else if (cropDragState.handle.includes('r')) {
+                    rect.w = maxW - rect.x;
+                }
+            }
+            if (rect.y + rect.h > maxH) {
+                if (cropDragState.handle === 'move') {
+                    rect.y = Math.max(0, maxH - rect.h);
+                } else if (cropDragState.handle.includes('b')) {
+                    rect.h = maxH - rect.y;
+                }
+            }
+            rect.w = Math.max(1, rect.w);
+            rect.h = Math.max(1, rect.h);
+            cropRect = clampCropRect(rect, maxW, maxH);
+            cropDragState.startX = e.clientX;
+            cropDragState.startY = e.clientY;
+            cropDragState.orig = { ...cropRect };
+            updateCropOverlay();
+        }
+
+        function endCropDrag() {
+            cropDragState = null;
+        }
+
+        cropOverlay.addEventListener('pointerdown', (e) => {
+            const handle = e.target.dataset.handle;
+            if (handle) {
+                startCropDrag(e, handle);
+            } else {
+                startCropDrag(e, 'move');
+            }
+        });
+        window.addEventListener('pointermove', (e) => moveCropDrag(e));
+        window.addEventListener('pointerup', () => endCropDrag());
+        window.addEventListener('resize', () => updateCropOverlay());
+
+        async function mergeClips() {
+            setStatus('Preparing merge...');
+            if (clips.length < 1) {
+                setStatus('Upload at least one clip.');
+                return;
+            }
+            const fps = parseInt(fpsSelector.value, 10) || 16;
+            const bitrate = parseInt(bitrateSelector.value, 10) || 6000000;
+            const fitMode = fitSelector.value || 'contain';
+
+            const { outputWidth, outputHeight } = getOutputDimensions();
+            for (const clip of clips) {
+                if (!clip.frames || !clip.frames.length) {
+                    setStatus('Load frames for all clips before merging.');
+                    return;
+                }
+            }
+            const merged = getMergedSegments();
+            const totalFrames = merged.totalFrames;
+
+            if (!totalFrames) {
+                setStatus('No frames to merge.');
+                return;
+            }
+            if (!outputWidth || !outputHeight) {
+                setStatus('Output dimensions could not be determined. Try WebM source or re-encode the inputs.');
+                return;
+            }
+            if (!cropRect || cropRect.w <= 0 || cropRect.h <= 0) {
+                setStatus('Crop box is not set.');
+                return;
+            }
+            let cropRectSafe = clampCropRect(cropRect, outputWidth, outputHeight);
+            if (cropRectSafe.w % 2 !== 0) cropRectSafe.w -= 1;
+            if (cropRectSafe.h % 2 !== 0) cropRectSafe.h -= 1;
+            if (cropRectSafe.w <= 0 || cropRectSafe.h <= 0) {
+                setStatus('Crop box must be at least 2×2 pixels.');
+                return;
+            }
+            if (cropRectSafe.w !== cropRect.w || cropRectSafe.h !== cropRect.h) {
+                cropRect = { ...cropRectSafe };
+                updateCropOverlay();
+            }
+
+            mergeBtnBottom.disabled = true;
+            loading.classList.add('active');
+            loading.textContent = 'Encoding...';
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+
+            try {
+                const segments = merged.segments;
+                const baseCanvas = document.createElement('canvas');
+                baseCanvas.width = outputWidth;
+                baseCanvas.height = outputHeight;
+                const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
+
+                const blob = await encodeFramesWithCanvas({
+                    width: cropRectSafe.w,
+                    height: cropRectSafe.h,
+                    fps: fps,
+                    bitrate: bitrate,
+                    frameCount: totalFrames,
+                    getFrame: (globalIndex) => {
+                        const segment = segments.find(seg => globalIndex >= seg.start && globalIndex <= seg.end);
+                        if (!segment) return null;
+                        const localIndex = segment.clip.startFrame + (globalIndex - segment.start);
+                        return segment.clip.frames[localIndex];
+                    },
+                    drawFrame: (ctx, frame) => {
+                        drawFrameToCanvas(baseCtx, frame, outputWidth, outputHeight, fitMode);
+                        ctx.drawImage(
+                            baseCanvas,
+                            cropRectSafe.x,
+                            cropRectSafe.y,
+                            cropRectSafe.w,
+                            cropRectSafe.h,
+                            0,
+                            0,
+                            cropRectSafe.w,
+                            cropRectSafe.h
+                        );
+                    },
+                    onProgress: ({ encodedFrames, totalFrames }) => {
+                        const progress = Math.round((encodedFrames / totalFrames) * 100);
+                        progressBar.style.width = progress + '%';
+                        loading.textContent = `Encoding frames: ${encodedFrames}/${totalFrames} (${progress}%)`;
+                    }
+                });
+
+                const url = URL.createObjectURL(blob);
+                downloadLink.href = url;
+                downloadLink.download = 'merged.webm';
+                downloadLink.click();
+
+                setStatus(`Exported ${clips.length} clip${clips.length > 1 ? 's' : ''} into ${totalFrames} frames.`);
+            } catch (error) {
+                console.error('Merge failed', error);
+                setStatus('Merge failed: ' + (error.message || 'Unknown error'));
+            } finally {
+                loading.classList.remove('active');
+                progressContainer.style.display = 'none';
+                mergeBtnBottom.disabled = false;
+            }
+        }
+
+        function drawFrameToCanvas(ctx, frame, outW, outH, mode) {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, outW, outH);
+            const srcW = frame.displayWidth || frame.codedWidth;
+            const srcH = frame.displayHeight || frame.codedHeight;
+            if (!srcW || !srcH) {
+                ctx.drawImage(frame, 0, 0, outW, outH);
+                return;
+            }
+            const srcRatio = srcW / srcH;
+            const dstRatio = outW / outH;
+            let drawW = outW;
+            let drawH = outH;
+            if (mode === 'cover') {
+                if (srcRatio > dstRatio) {
+                    drawH = outH;
+                    drawW = outH * srcRatio;
+                } else {
+                    drawW = outW;
+                    drawH = outW / srcRatio;
+                }
+            } else {
+                if (srcRatio > dstRatio) {
+                    drawW = outW;
+                    drawH = outW / srcRatio;
+                } else {
+                    drawH = outH;
+                    drawW = outH * srcRatio;
+                }
+            }
+            const x = (outW - drawW) / 2;
+            const y = (outH - drawH) / 2;
+            ctx.drawImage(frame, x, y, drawW, drawH);
+        }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,1785 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+IMAGE & VIDEO HEIGHT TOOL
+
+100% BROWSER-NATIVE - NO EXTERNAL DEPENDENCIES!
+
+FEATURES:
+- Image operations (Extend, Replace, Crop, Add References): ✓ Works anywhere
+- Video frame extraction: ✓ Works anywhere
+- Video cropping: ✓ Works anywhere (uses canvas + MediaRecorder API)
+
+Just open this file in any modern browser - Chrome, Firefox, Safari, Edge.
+No setup, no internet, no dependencies needed!
+
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Editor</title>
+    
+    <script src="shared.js"></script>
+    
+    <!-- No external dependencies needed! All browser-native -->
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            max-width: 900px;
+            margin: 0;
+            padding: 15px;
+            background: #f5f5f5;
+        }
+        
+        @media (min-width: 768px) {
+            body {
+                margin: 40px auto;
+                padding: 20px;
+            }
+        }
+        
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 20px;
+        }
+
+        h2 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+        }
+        
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+            min-height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        @media (min-width: 768px) {
+            .upload-area {
+                padding: 40px;
+            }
+        }
+        
+        .upload-area:hover {
+            border-color: #007bff;
+            background: #f8f9fa;
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .preview {
+            margin-top: 20px;
+            text-align: center;
+            display: none;
+        }
+        
+        .preview.active {
+            display: block;
+        }
+        
+        .preview img, .preview video {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        
+        /* Hide default video controls and play button overlay */
+        video::-webkit-media-controls {
+            display: none !important;
+        }
+        
+        video::-webkit-media-controls-enclosure {
+            display: none !important;
+        }
+        
+        video::-webkit-media-controls-panel {
+            display: none !important;
+        }
+        
+        video::-webkit-media-controls-play-button {
+            display: none !important;
+        }
+        
+        video::-webkit-media-controls-start-playback-button {
+            display: none !important;
+        }
+        
+        /* Firefox */
+        video::-moz-media-controls {
+            display: none !important;
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        @media (min-width: 768px) {
+            .buttons {
+                gap: 10px;
+            }
+        }
+        
+        button {
+            padding: 14px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: all 0.3s;
+            flex: 1 1 auto;
+            min-width: 90px;
+            white-space: nowrap;
+            min-height: 48px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        @media (min-width: 768px) {
+            button {
+                padding: 10px 20px;
+                font-size: 14px;
+                min-width: 110px;
+                min-height: 40px;
+            }
+        }
+        
+        button.primary {
+            background: #007bff;
+            color: white;
+        }
+        
+        button.primary:hover:not(:disabled) {
+            background: #0056b3;
+        }
+        
+        button.primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        button.secondary:hover {
+            background: #545b62;
+        }
+        
+        .info {
+            margin-top: 15px;
+            padding: 12px;
+            background: #e7f3ff;
+            border-radius: 4px;
+            font-size: 14px;
+            word-break: break-word;
+            color: #666;
+        }
+        
+        @media (min-width: 768px) {
+            .info {
+                font-size: 13px;
+                padding: 10px;
+            }
+        }
+        
+        .loading {
+            margin-top: 15px;
+            padding: 15px;
+            background: #fff3cd;
+            border-radius: 4px;
+            display: none;
+            font-size: 14px;
+            text-align: center;
+            color: #856404;
+            font-weight: bold;
+        }
+        
+        .loading.active {
+            display: block;
+        }
+        
+        /* Mobile-friendly inputs */
+        input[type="number"], select, input[type="file"] {
+            font-size: 16px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 80px;
+        }
+        
+        @media (min-width: 768px) {
+            input[type="number"], select {
+                font-size: 14px;
+                padding: 5px;
+            }
+        }
+        
+        label {
+            font-size: 14px;
+            margin-bottom: 5px;
+            display: inline-block;
+        }
+        
+        #frameInfo {
+            font-size: 13px;
+            padding: 8px 12px;
+        }
+        
+        @media (min-width: 768px) {
+            #frameInfo {
+                font-size: 12px;
+                padding: 5px 10px;
+            }
+        }
+        
+        /* Video scrubber (range slider) - mobile friendly */
+        #videoScrubber {
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        
+        /* Track */
+        #videoScrubber::-webkit-slider-track {
+            background: #ddd;
+            border-radius: 6px;
+            height: 12px;
+        }
+        
+        #videoScrubber::-moz-range-track {
+            background: #ddd;
+            border-radius: 6px;
+            height: 12px;
+        }
+        
+        /* Thumb - large for mobile */
+        #videoScrubber::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+            border: 3px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        #videoScrubber::-moz-range-thumb {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+            border: 3px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        /* Active state */
+        #videoScrubber:active::-webkit-slider-thumb {
+            background: #0056b3;
+            transform: scale(1.1);
+        }
+        
+        #videoScrubber:active::-moz-range-thumb {
+            background: #0056b3;
+            transform: scale(1.1);
+        }
+        
+        .error-console {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #856404;
+            max-height: 200px;
+            overflow-y: auto;
+            text-align: left;
+        }
+        
+        @media (min-width: 768px) {
+            .error-console {
+                font-size: 12px;
+            }
+        }
+        
+        .error-console .error-entry {
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #ffeaa7;
+        }
+        
+        .error-console .error-entry:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .error-console .timestamp {
+            color: #666;
+            font-size: 10px;
+            margin-bottom: 3px;
+        }
+        
+        @media (min-width: 768px) {
+            .error-console .timestamp {
+                font-size: 11px;
+            }
+        }
+        
+        .error-console pre {
+            margin: 5px 0 0 0;
+            background: #fff;
+            padding: 8px;
+            border-radius: 3px;
+            overflow-x: auto;
+            font-size: 10px;
+        }
+        
+        @media (min-width: 768px) {
+            .error-console pre {
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Image Editor</h1>
+
+        <!-- FPS Selector (shown after video upload) -->
+        <div id="fpsContainer" style="display:none; margin-bottom:20px; padding:15px; background:#f8f9fa; border-radius:8px;">
+            <div style="display:flex; flex-direction:column; align-items:center; gap:10px;">
+                <div style="display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;">
+                    <label for="fpsSelector" style="font-size:14px; color:#666; font-weight:600;">Video Frame Rate:</label>
+                    <select id="fpsSelector" style="font-size:16px; padding:8px 12px; border:1px solid #ddd; border-radius:4px; background:white; cursor:pointer; min-width:260px;">
+                        <option value="16" selected>16 fps (AI Video Default)</option>
+                        <option value="24">24 fps (Film)</option>
+                        <option value="30">30 fps (Smooth)</option>
+                    </select>
+                    <span id="detectedFpsLabel" style="font-size:12px; color:#999; min-width:120px;"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+            <p>Click or drag to upload image or video</p>
+            <input type="file" id="fileInput" accept="image/*,video/mp4,video/webm,video/quicktime">
+        </div>
+
+        <div class="preview" id="preview">
+            <div style="position: relative; display: inline-block; width: 100%;">
+                <img id="resultImage" alt="Result" style="display:none;">
+                
+                <!-- Hidden download link (triggered by button) -->
+                <a id="downloadLink" download="modified-image.png" style="display:none;"></a>
+                
+                <div id="frameInfo" style="display:none; position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); color:white; padding:5px 10px; border-radius:4px; font-size:12px;"></div>
+            </div>
+        </div>
+        
+        <!-- Custom video controls (shown only when video is loaded) -->
+        <div id="videoControls" style="display:none; margin-top:15px; padding:20px; background:#f8f9fa; border-radius:8px;">
+            <!-- Scrubber (timeline) -->
+            <input type="range" id="videoScrubber" min="0" max="1000" value="0" 
+                   style="width:100%; margin-bottom:15px; height:12px; cursor:pointer; -webkit-appearance:none; appearance:none; background:#ddd; border-radius:6px; outline:none;">
+            
+            <!-- Frame display -->
+            <div style="text-align:center; margin-bottom:15px; font-size:15px; color:#666; font-weight:500;">
+                Frame <span id="currentFrameDisplay">0</span> / <span id="totalFramesDisplay">0</span>
+            </div>
+            
+            <!-- Control buttons - mobile optimized -->
+            <div style="display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap;">
+                <button id="frameBackBtn" class="primary" title="Back 1 frame" style="min-width:60px; min-height:56px; font-size:24px; padding:12px; flex:0 0 auto;">‹</button>
+                <button id="playPauseBtn" class="primary" title="Play/Pause" style="min-width:100px; min-height:56px; font-size:16px; padding:12px 20px; flex:0 1 auto;">▶ Play</button>
+                <button id="frameForwardBtn" class="primary" title="Forward 1 frame" style="min-width:60px; min-height:56px; font-size:24px; padding:12px; flex:0 0 auto;">›</button>
+            </div>
+        </div>
+
+        <div id="extractControls" style="display:none; margin-top:15px; text-align:center;">
+            <button class="primary" id="extractFramesBtn" style="min-width:180px;">Extract Frames</button>
+        </div>
+        
+        <div class="info" id="info"></div>
+        <div class="loading" id="loading">Processing...</div>
+        <div style="display:none; margin-top:10px;" id="progressContainer">
+            <div style="height:6px; background:#eceff1; border-radius:3px; overflow:hidden;">
+                <div id="progressBar" style="height:100%; background:#007bff; width:0%; transition:width 0.3s;"></div>
+            </div>
+        </div>
+        <div class="error-console" id="errorConsole" style="display:none;"></div>
+        
+        <div id="imageSettings" style="display:none; margin-bottom: 15px;">
+            <label for="aspectRatioInput">Target width (for resize): </label>
+            <input type="number" id="aspectRatioInput" value="1080" min="100" max="4000" style="width: 80px; padding: 5px;">
+            <span>px</span>
+        </div>
+        
+        <div id="logoHeightSettings" style="display:none; margin-bottom: 15px;">
+            <label for="pixelInput">Logo height to remove: </label>
+            <input type="number" id="pixelInput" value="276" min="1" max="2000" style="width: 70px; padding: 5px;">
+            <span>px</span>
+            <div style="font-size: 11px; color: #666; margin-top: 5px;" id="mathHelper"></div>
+        </div>
+
+        <div id="bitrateContainer" style="display:none; margin-bottom:15px; padding:12px; background:#f8f9fa; border-radius:8px;">
+            <div style="display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;">
+                <label for="bitrateSelector" style="font-size:14px; color:#666; font-weight:600;">Bitrate:</label>
+                <select id="bitrateSelector" style="font-size:16px; padding:8px 12px; border:1px solid #ddd; border-radius:4px; background:white; cursor:pointer; min-width:140px;">
+                    <option value="2000000">2 Mbps</option>
+                    <option value="4000000">4 Mbps</option>
+                    <option value="6000000" selected>6 Mbps</option>
+                    <option value="8000000">8 Mbps</option>
+                    <option value="12000000">12 Mbps</option>
+                </select>
+                <span id="detectedBitrateLabel" style="font-size:12px; color:#999; min-width:120px;"></span>
+            </div>
+        </div>
+
+            <div class="buttons" id="imageButtons" style="display:none;">
+                <button class="primary" id="extendBtn">Extend</button>
+                <button class="primary" id="replaceBtn">Replace</button>
+                <button class="primary" id="cropBtn">Crop</button>
+                <button class="primary" id="addReferencesBtn">Add References</button>
+                <button class="primary" id="downloadBtn">Download</button>
+                <button class="secondary" onclick="reset()">Clear</button>
+            </div>
+
+            <div class="buttons" id="videoButtons" style="display:none;">
+                <button class="primary" id="videoCropBtn">Crop Video</button>
+                <button class="primary" id="trimStartBtn" title="Remove everything before current time">Trim Start</button>
+                <button class="primary" id="trimEndBtn" title="Remove everything after current time">Trim End</button>
+                <button class="primary" id="extractFrameBtn">Extract Frame</button>
+                <button class="primary" id="videoDownloadBtn">Download</button>
+                <button class="secondary" onclick="reset()">Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reference Images Modal -->
+    <div id="referenceModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); z-index:1000; justify-content:center; align-items:center; padding:15px;">
+        <div style="background:white; padding:20px; border-radius:8px; max-width:500px; width:100%; max-height:90vh; overflow-y:auto;">
+            <h2 style="margin:0 0 20px 0; font-size:18px;">Add Reference Images</h2>
+            
+            <div style="margin-bottom:20px;">
+                <label style="display:block; margin-bottom:8px; font-weight:bold; font-size:15px;">Upload 1-4 Images:</label>
+                <input type="file" id="referenceFilesInput" accept="image/*" multiple style="width:100%; padding:12px; font-size:16px; border:2px solid #ddd; border-radius:4px;">
+                <div style="margin-top:10px; font-size:13px; color:#666; line-height:1.4;">
+                    Images will be arranged in a single row, left-aligned with padding
+                </div>
+                <div id="referencePreview" style="margin-top:15px; display:flex; gap:8px; flex-wrap:wrap;"></div>
+            </div>
+            
+            <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+                <button class="secondary" onclick="closeReferenceModal()" style="min-width:100px;">Cancel</button>
+                <button class="primary" id="applyReferencesBtn" style="min-width:100px;">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const preview = document.getElementById('preview');
+        const resultImage = document.getElementById('resultImage');
+        const downloadLink = document.getElementById('downloadLink');
+        const info = document.getElementById('info');
+        const loading = document.getElementById('loading');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const errorConsole = document.getElementById('errorConsole');
+        const pixelInput = document.getElementById('pixelInput');
+        const aspectRatioInput = document.getElementById('aspectRatioInput');
+        const mathHelper = document.getElementById('mathHelper');
+        
+        const imageButtons = document.getElementById('imageButtons');
+        const videoButtons = document.getElementById('videoButtons');
+        const extendBtn = document.getElementById('extendBtn');
+        const replaceBtn = document.getElementById('replaceBtn');
+        const cropBtn = document.getElementById('cropBtn');
+        const addReferencesBtn = document.getElementById('addReferencesBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const videoCropBtn = document.getElementById('videoCropBtn');
+        const trimStartBtn = document.getElementById('trimStartBtn');
+        const trimEndBtn = document.getElementById('trimEndBtn');
+        const extractFrameBtn = document.getElementById('extractFrameBtn');
+        const videoDownloadBtn = document.getElementById('videoDownloadBtn');
+        const frameInfo = document.getElementById('frameInfo');
+        
+        // Custom video controls
+        const videoControls = document.getElementById('videoControls');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const frameBackBtn = document.getElementById('frameBackBtn');
+        const frameForwardBtn = document.getElementById('frameForwardBtn');
+        const videoScrubber = document.getElementById('videoScrubber');
+        const fpsSelector = document.getElementById('fpsSelector');
+        const bitrateSelector = document.getElementById('bitrateSelector');
+        const bitrateContainer = document.getElementById('bitrateContainer');
+        const detectedFpsLabel = document.getElementById('detectedFpsLabel');
+        const detectedBitrateLabel = document.getElementById('detectedBitrateLabel');
+        const currentFrameDisplay = document.getElementById('currentFrameDisplay');
+        const totalFramesDisplay = document.getElementById('totalFramesDisplay');
+        const extractControls = document.getElementById('extractControls');
+        const extractFramesBtn = document.getElementById('extractFramesBtn');
+        const fpsContainer = document.getElementById('fpsContainer');
+        const imageSettings = document.getElementById('imageSettings');
+        const logoHeightSettings = document.getElementById('logoHeightSettings');
+        
+        // Reference modal elements
+        const referenceModal = document.getElementById('referenceModal');
+        const referenceFilesInput = document.getElementById('referenceFilesInput');
+        const referencePreview = document.getElementById('referencePreview');
+        const applyReferencesBtn = document.getElementById('applyReferencesBtn');
+
+        let currentImage = null;              // Currently displayed image
+        let currentVideoFile = null;          // Current video file (for video operations only)
+        let currentFileName = '';
+        let videoNeedsEncoding = false;
+        
+        // Reference images state
+        let referenceImages = [];
+
+        // Get pixels to add/remove
+        function getPixels() {
+            const val = parseInt(pixelInput.value);
+            return (val >= 1 && val <= 2000) ? val : 276;
+        }
+
+        // Get target width for resize
+        function getTargetWidth() {
+            const val = parseInt(aspectRatioInput.value);
+            return (val >= 100 && val <= 4000) ? val : 1080;
+        }
+
+        // Update math helper to show prediction
+        function updateMathHelper() {
+            if (!currentImage) {
+                mathHelper.textContent = '';
+                return;
+            }
+            
+            const w = currentImage.width;
+            const h = currentImage.height;
+            const targetWidth = getTargetWidth();
+            const logoHeight = getPixels();
+            
+            // What original should be at target width
+            const originalAtTarget = Math.round(targetWidth * h / w);
+            
+            // What we need at target width (original + logo)
+            const neededAtTarget = originalAtTarget + logoHeight;
+            
+            // Scale back to original width
+            const neededAtOriginal = Math.round(w * neededAtTarget / targetWidth);
+            
+            // Pixels to add
+            const pixelsToAdd = neededAtOriginal - h;
+            
+            // Verify the math
+            const extendedHeight = h + pixelsToAdd;
+            const videoHeight = Math.round(targetWidth * extendedHeight / w);
+            const afterCrop = videoHeight - logoHeight;
+            
+            mathHelper.textContent = `Extend adds ${pixelsToAdd}px → ${targetWidth}×${videoHeight}px → Crop ${logoHeight}px → ${targetWidth}×${afterCrop}px (original: ${targetWidth}×${originalAtTarget}px) ${afterCrop === originalAtTarget ? '✓' : '⚠️'}`;
+            mathHelper.style.color = afterCrop === originalAtTarget ? '#666' : '#dc3545';
+        }
+
+        pixelInput.addEventListener('input', updateMathHelper);
+        aspectRatioInput.addEventListener('input', updateMathHelper);
+
+        // Error logging function
+        function logError(message, error) {
+            const timestamp = new Date().toLocaleTimeString();
+            const errorEntry = document.createElement('div');
+            errorEntry.className = 'error-entry';
+            
+            let errorDetails = '';
+            if (error) {
+                if (typeof error === 'object') {
+                    errorDetails = `<div><pre>${JSON.stringify(error, null, 2)}</pre></div>`;
+                } else {
+                    errorDetails = `<div>Details: ${error}</div>`;
+                }
+            }
+            
+            errorEntry.innerHTML = `
+                <div class="timestamp">${timestamp}</div>
+                <div><strong>Error:</strong> ${message}</div>
+                ${errorDetails}
+            `;
+            errorConsole.appendChild(errorEntry);
+            errorConsole.style.display = 'block';
+            errorConsole.scrollTop = errorConsole.scrollHeight;
+            console.error(message, error);
+        }
+
+        function setStatus(message) {
+            info.style.display = 'block';
+            info.textContent = message;
+        }
+
+        // Upload click
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        extractFramesBtn.addEventListener('click', () => {
+            if (!currentVideoFile) return;
+            extractFramesBtn.disabled = true;
+            initializeFrameViewer(currentVideoFile).finally(() => {
+                extractFramesBtn.disabled = false;
+            });
+        });
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => e.preventDefault());
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            if (file) loadFile(file);
+        });
+
+        // File input
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) loadFile(e.target.files[0]);
+        });
+
+        function loadFile(file) {
+            const isVideo = file.type.startsWith('video/');
+            const isImage = file.type.startsWith('image/');
+
+            if (!isVideo && !isImage) {
+                setStatus('Please upload an image or video file.');
+                return;
+            }
+
+            if (isVideo) {
+                loadVideo(file);
+            } else {
+                loadImage(file);
+            }
+        }
+
+        function loadImage(file) {
+            currentFileName = file.name.replace(/\.[^/.]+$/, ''); // Remove extension
+            videoNeedsEncoding = false;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    currentImage = img;
+                    currentVideoFile = null;
+                    showImage(img);
+                    imageSettings.style.display = '';
+                    logoHeightSettings.style.display = '';
+                    imageButtons.style.display = 'flex';
+                    videoButtons.style.display = 'none';
+                    videoControls.style.display = 'none'; // Hide video player controls
+                    fpsContainer.style.display = 'none';
+                    bitrateContainer.style.display = 'none';
+                    resultImage.style.display = 'block';
+                    frameInfo.style.display = 'none';
+                    preview.classList.add('active');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function loadVideo(file) {
+            currentFileName = file.name.replace(/\.[^/.]+$/, ''); // Remove extension
+            currentVideoFile = file;
+            currentImage = null;
+            uploadArea.style.display = 'none';
+            fpsContainer.style.display = '';
+            imageSettings.style.display = 'none';
+            logoHeightSettings.style.display = 'none';
+            bitrateContainer.style.display = 'none';
+            videoNeedsEncoding = true;
+            
+            // Clear frame cache for new video
+            clearFrameCache();
+            
+            // Hide video player, show canvas viewer
+            resultImage.style.display = 'none';
+            imageButtons.style.display = 'none';
+            videoButtons.style.display = 'none';
+            frameInfo.style.display = 'none';
+            videoControls.style.display = 'none';
+            downloadLink.removeAttribute('href');
+            extractControls.style.display = 'block';
+            extractFramesBtn.disabled = true;
+            detectedFpsLabel.textContent = '';
+            detectedBitrateLabel.textContent = '';
+            info.style.display = 'block';
+            info.textContent = 'Detecting FPS/bitrate… adjust if needed, then click Extract Frames.';
+            
+            // Detect settings before extraction
+            detectVideoSettings(file).finally(() => {
+                extractFramesBtn.disabled = false;
+            });
+        }
+        
+        // FRAME-BASED VIDEO VIEWER
+        let frameViewer = {
+            canvas: null,
+            ctx: null,
+            currentFrame: 0
+        };
+        
+        async function initializeFrameViewer(videoFile) {
+            try {
+                loading.classList.add('active');
+                loading.textContent = 'Loading video...';
+                preview.classList.remove('active');
+                videoControls.style.display = 'none';
+                videoButtons.style.display = 'none';
+                info.style.display = 'none';
+                extractControls.style.display = 'none';
+                
+                // Get FPS from selector
+                const fps = parseInt(fpsSelector.value) || 16;
+                
+                // Extract all frames to cache
+                await extractAllFrames(videoFile, fps);
+                syncFrameViewerFromCache(0);
+                
+            } catch (error) {
+                loading.classList.remove('active');
+                progressContainer.style.display = 'none';
+                console.error('[Frame Viewer] Initialization failed:', error);
+                logError('Failed to load video', error);
+                setStatus('Error loading video: ' + (error.message || 'Unknown error'));
+            }
+        }
+
+        function syncFrameViewerFromCache(targetFrameIndex = 0) {
+            // Create canvas for display
+            if (!frameViewer.canvas) {
+                frameViewer.canvas = document.createElement('canvas');
+                frameViewer.canvas.style.maxWidth = '100%';
+                frameViewer.canvas.style.display = 'block';
+                frameViewer.canvas.style.background = '#000';
+                preview.appendChild(frameViewer.canvas);
+            }
+            
+            frameViewer.canvas.width = frameCache.width;
+            frameViewer.canvas.height = frameCache.height;
+            frameViewer.ctx = frameViewer.canvas.getContext('2d', { willReadFrequently: false });
+            frameViewer.currentFrame = 0;
+            
+            // Show canvas
+            frameViewer.canvas.style.display = 'block';
+            preview.classList.add('active');
+            
+            // Set up controls
+            const totalFrames = frameCache.frames.length - 1; // 0-based
+            const fps = frameCache.fps || parseInt(fpsSelector.value) || 16;
+            videoScrubber.max = totalFrames;
+            videoScrubber.value = 0;
+            videoScrubber.dataset.fps = fps;
+            videoScrubber.dataset.totalFrames = totalFrames;
+            
+            totalFramesDisplay.textContent = totalFrames + 1;
+            currentFrameDisplay.textContent = '1';
+            
+            info.textContent = `${frameCache.width} × ${frameCache.height} px, ${totalFrames + 1} frames`;
+            
+            // Draw desired frame
+            const clampedFrame = Math.max(0, Math.min(targetFrameIndex, totalFrames));
+            drawFrame(clampedFrame);
+            
+            videoButtons.style.display = 'flex';
+            videoControls.style.display = 'block';
+            imageSettings.style.display = '';
+            logoHeightSettings.style.display = '';
+            bitrateContainer.style.display = '';
+            info.style.display = 'block';
+            
+            // Disable FPS selector - frames are extracted, user must re-upload to change
+            fpsSelector.disabled = true;
+            fpsSelector.style.opacity = '0.6';
+            fpsSelector.style.cursor = 'not-allowed';
+            
+            loading.classList.remove('active');
+            progressContainer.style.display = 'none';
+        }
+        
+        // Draw a specific frame to canvas
+        function drawFrame(frameIndex) {
+            if (!frameCache.frames || frameIndex < 0 || frameIndex >= frameCache.frames.length) {
+                console.warn('[Frame Viewer] Invalid frame index:', frameIndex);
+                return;
+            }
+            
+            const frame = frameCache.frames[frameIndex];
+            const sourceHeight = frameCache.sourceHeight || frameCache.height;
+            
+            if (frameCache.height < sourceHeight) {
+                frameViewer.ctx.drawImage(frame, 0, 0, frameCache.width, frameCache.height, 0, 0, frameCache.width, frameCache.height);
+            } else {
+                frameViewer.ctx.drawImage(frame, 0, 0, frameCache.width, frameCache.height);
+            }
+            frameViewer.currentFrame = frameIndex;
+            
+            // Update UI
+            currentFrameDisplay.textContent = frameIndex + 1;
+            videoScrubber.value = frameIndex;
+        }
+
+        function setFpsSelection(fpsValue) {
+            if (fpsSelector.disabled) return;
+            const rounded = Math.round(fpsValue);
+            const options = Array.from(fpsSelector.options).map(opt => parseInt(opt.value, 10));
+            if (options.includes(rounded)) {
+                fpsSelector.value = String(rounded);
+                return;
+            }
+            const closest = options.reduce((prev, curr) =>
+                Math.abs(curr - fpsValue) < Math.abs(prev - fpsValue) ? curr : prev
+            );
+            fpsSelector.value = String(closest);
+        }
+
+        function setBitrateSelection(bitrateValue) {
+            const options = Array.from(bitrateSelector.options).map(opt => parseInt(opt.value, 10));
+            if (!options.length) return;
+            const closest = options.reduce((prev, curr) =>
+                Math.abs(curr - bitrateValue) < Math.abs(prev - bitrateValue) ? curr : prev
+            );
+            bitrateSelector.value = String(closest);
+        }
+
+        function showDetectedFps(fpsValue) {
+            if (!fpsValue || !Number.isFinite(fpsValue)) return;
+            detectedFpsLabel.textContent = `Detected: ${fpsValue.toFixed(2)} fps`;
+        }
+
+        function showDetectedBitrate(bitrateValue) {
+            if (!bitrateValue || !Number.isFinite(bitrateValue)) return;
+            const formatted = formatBitrateMbps(bitrateValue, 1);
+            detectedBitrateLabel.textContent = formatted ? `Estimated: ${formatted}` : '';
+        }
+
+        async function detectVideoSettings(videoFile) {
+            try {
+                loading.classList.add('active');
+                loading.textContent = 'Detecting settings...';
+                progressContainer.style.display = 'none';
+                
+                const buffer = await videoFile.arrayBuffer();
+                let demuxed = null;
+                const lowerName = (videoFile.name || '').toLowerCase();
+                if (videoFile.type === 'video/webm' || lowerName.endsWith('.webm')) {
+                    demuxed = parseWebm(buffer);
+                } else {
+                    demuxed = parseMp4(buffer);
+                }
+                
+                const inferredFps = estimateFps(demuxed);
+                if (inferredFps) {
+                    showDetectedFps(inferredFps);
+                    setFpsSelection(inferredFps);
+                }
+                
+                const duration = demuxed && demuxed.duration ? demuxed.duration : 0;
+                if (duration && videoFile.size) {
+                    const estimatedBitrate = estimateBitrate(videoFile.size, duration);
+                    showDetectedBitrate(estimatedBitrate);
+                    setBitrateSelection(estimatedBitrate);
+                }
+            } catch (error) {
+                console.warn('[Detect] Failed to detect settings:', error);
+                logError('Detection failed', error);
+                setStatus('Detection failed; using defaults.');
+            } finally {
+                loading.classList.remove('active');
+            }
+        }
+        
+        const framePlayback = createFramePlayback({
+            getTotalFrames: () => frameCache.frames.length,
+            getCurrentFrame: () => frameViewer.currentFrame,
+            drawFrame: (index) => drawFrame(index),
+            getFps: () => parseInt(fpsSelector.value) || 16,
+            onStart: () => { playPauseBtn.textContent = '⏸ Pause'; },
+            onStop: () => { playPauseBtn.textContent = '▶ Play'; }
+        });
+
+        // CUSTOM VIDEO CONTROLS
+        
+        // FPS selector change - only allow before video is loaded
+        fpsSelector.addEventListener('change', async () => {
+            // If video is already loaded, this shouldn't happen (selector is disabled)
+            // But just in case, do nothing
+            if (currentVideoFile && frameCache.frames.length > 0) {
+                console.log('[FPS] Selector disabled - video already loaded');
+                return;
+            }
+        });
+
+        bitrateSelector.addEventListener('change', () => {
+            if (currentVideoFile && frameCache.frames.length > 0) {
+                videoNeedsEncoding = true;
+                downloadLink.removeAttribute('href');
+            }
+        });
+        
+        // ROBUST FRAME EXTRACTOR - Seek to exact frame positions
+        // FRAME CACHE SYSTEM - Extract once, encode many times
+        let frameCache = {
+            videoFile: null,        // Which file is cached
+            fps: null,              // FPS used for extraction
+            frames: [],             // Array of ImageBitmap objects
+            width: 0,
+            height: 0,
+            duration: 0,
+            sourceHeight: 0
+        };
+        
+        // Clear cache when new video loaded
+        function clearFrameCache() {
+            // Release ImageBitmap resources
+            frameCache.frames.forEach(frame => {
+                if (frame && frame.close) frame.close();
+            });
+            frameCache = {
+                videoFile: null,
+                fps: null,
+                frames: [],
+                width: 0,
+                height: 0,
+                duration: 0,
+                sourceHeight: 0
+            };
+        }
+        
+        async function extractAllFrames(videoFile, fps) {
+            loading.classList.add('active');
+            loading.textContent = 'Preparing decoder...';
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+
+            let result;
+            try {
+                result = await extractFrames(videoFile, fps, {
+                    onProgress: ({ decodedFrames, expectedFrames, sampleIndex, totalSamples }) => {
+                        const progress = expectedFrames
+                            ? Math.round((decodedFrames / expectedFrames) * 100)
+                            : Math.round((sampleIndex / totalSamples) * 100);
+                        progressBar.style.width = `${Math.min(progress, 100)}%`;
+                        if (expectedFrames) {
+                            loading.textContent = `Extracting frames: ${Math.min(decodedFrames, expectedFrames)}/${expectedFrames} (${progress}%)`;
+                        } else {
+                            loading.textContent = `Decoding samples: ${sampleIndex}/${totalSamples} (${progress}%)`;
+                        }
+                    }
+                });
+            } catch (error) {
+                loading.classList.remove('active');
+                progressContainer.style.display = 'none';
+                throw error;
+            }
+
+            const duration = result.frames.length / fps;
+            frameCache = {
+                videoFile: videoFile,
+                fps: fps,
+                frames: result.frames,
+                width: result.width,
+                height: result.height,
+                duration: duration,
+                sourceHeight: result.height
+            };
+
+            loading.textContent = `Cached ${result.frames.length} frames in memory`;
+            return frameCache;
+        }
+
+        // FRAME-PERFECT VIDEO EXTRACTOR using cached frames
+        async function extractVideoFrames(videoFile, fps, startTime = 0, endTime = null, cropHeight = null, useCacheOnly = false) {
+            console.log('[Encode] Starting video encoding');
+            console.log('[Encode] Start:', startTime, 'End:', endTime, 'Crop:', cropHeight);
+
+            if (useCacheOnly && (!frameCache.frames || frameCache.frames.length === 0)) {
+                throw new Error('No cached frames available for encoding.');
+            }
+
+            if (!useCacheOnly && (!frameCache.videoFile || frameCache.videoFile !== videoFile || frameCache.fps !== fps)) {
+                console.log('[Encode] Cache miss - extracting frames');
+                await extractAllFrames(videoFile, fps);
+            } else if (!useCacheOnly) {
+                console.log('[Encode] Cache hit - using cached frames!');
+                loading.classList.add('active');
+                loading.textContent = 'Using cached frames (fast!)...';
+                progressContainer.style.display = 'block';
+                progressBar.style.width = '0%';
+            }
+
+            const width = frameCache.width;
+            const sourceHeight = frameCache.sourceHeight || frameCache.height;
+            const fullHeight = frameCache.height;
+            let height = cropHeight || fullHeight;
+            const duration = endTime !== null ? endTime : frameCache.duration;
+
+            if (width % 2 !== 0) {
+                throw new Error('Source width is odd. Processing will likely fail.');
+            }
+            if (height % 2 !== 0) {
+                height = height - 1;
+                console.warn('[Encode] Adjusted output height to even:', height);
+            }
+            if (height <= 0) {
+                throw new Error('Output height is too small after even-height adjustment.');
+            }
+
+            let startFrame = Math.round(startTime * fps);
+            let endFrame = Math.round(duration * fps) - 1;
+            let totalFrames = (endFrame - startFrame) + 1;
+            if (useCacheOnly) {
+                startFrame = 0;
+                endFrame = frameCache.frames.length - 1;
+                totalFrames = frameCache.frames.length;
+            }
+
+            console.log(`[Encode] Encoding frames ${startFrame} to ${endFrame} (${totalFrames} total)`);
+            loading.textContent = `Encoding frames: ${startFrame} to ${endFrame} (${totalFrames} total)`;
+
+            const selectedBitrate = parseInt(bitrateSelector.value, 10) || 6000000;
+            const blob = await encodeFramesWithCanvas({
+                width,
+                height,
+                fps,
+                bitrate: selectedBitrate,
+                frameCount: totalFrames,
+                getFrame: (i) => frameCache.frames[startFrame + i],
+                drawFrame: (ctx, frame) => {
+                    if (height < sourceHeight) {
+                        ctx.drawImage(frame, 0, 0, width, height, 0, 0, width, height);
+                    } else {
+                        ctx.drawImage(frame, 0, 0, width, sourceHeight, 0, 0, width, height);
+                    }
+                },
+                onProgress: ({ encodedFrames, totalFrames }) => {
+                    const progress = Math.round((encodedFrames / totalFrames) * 100);
+                    progressBar.style.width = progress + '%';
+                    loading.textContent = `Encoding frame ${startFrame + encodedFrames - 1} (${progress}%)`;
+                }
+            });
+
+            progressContainer.style.display = 'none';
+            loading.classList.remove('active');
+
+            return { blob, height, format: 'webm' };
+        }
+
+        // Play/Pause button
+        playPauseBtn.addEventListener('click', () => {
+            framePlayback.toggle();
+        });
+        
+        // Click canvas to toggle play/pause
+        preview.addEventListener('click', (e) => {
+            if (e.target === frameViewer.canvas) {
+                e.preventDefault();
+                framePlayback.toggle();
+            }
+        });
+        
+        // Prevent context menu on canvas
+        preview.addEventListener('contextmenu', (e) => {
+            if (e.target === frameViewer.canvas) {
+                e.preventDefault();
+                return false;
+            }
+        });
+        
+        // Update scrubber and frame display as video plays
+        // Scrubber input - jump to frame
+        videoScrubber.addEventListener('input', () => {
+            const frameNumber = parseInt(videoScrubber.value);
+            framePlayback.stop(); // Stop if playing
+            drawFrame(frameNumber);
+        });
+        
+        // Frame forward (1 frame)
+        frameForwardBtn.addEventListener('click', () => {
+            const totalFrames = frameCache.frames.length - 1;
+            const nextFrame = Math.min(frameViewer.currentFrame + 1, totalFrames);
+            framePlayback.stop(); // Stop if playing
+            drawFrame(nextFrame);
+        });
+        
+        // Frame backward (1 frame)
+        frameBackBtn.addEventListener('click', () => {
+            const prevFrame = Math.max(frameViewer.currentFrame - 1, 0);
+            framePlayback.stop(); // Stop if playing
+            drawFrame(prevFrame);
+        });
+
+        function showImage(img) {
+            const dataURL = imageToDataURL(img);
+            resultImage.src = dataURL;
+            downloadLink.href = dataURL;
+            downloadLink.download = 'modified-image.png';
+            info.textContent = `${img.width} × ${img.height} px`;
+            updateMathHelper();
+        }
+
+        function imageToDataURL(img) {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            return canvas.toDataURL('image/png');
+        }
+
+        // IMAGE OPERATIONS
+        extendBtn.addEventListener('click', () => {
+            if (!currentImage) return;
+            
+            const w = currentImage.width;
+            const h = currentImage.height;
+            const targetWidth = getTargetWidth();
+            const logoHeight = getPixels();
+            
+            // Calculate what original should be at target width
+            const originalAtTarget = Math.round(targetWidth * h / w);
+            
+            // What we need at target width (original + logo space)
+            const neededAtTarget = originalAtTarget + logoHeight;
+            
+            // Scale back to original width
+            const neededAtOriginal = Math.round(w * neededAtTarget / targetWidth);
+            
+            // Pixels to add
+            const pixelsToAdd = neededAtOriginal - h;
+            const newHeight = h + pixelsToAdd;
+
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = newHeight;
+            const ctx = canvas.getContext('2d', { 
+                colorSpace: 'srgb',
+                willReadFrequently: true
+            });
+            ctx.imageSmoothingEnabled = false;
+
+            ctx.drawImage(currentImage, 0, 0);
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, h, w, pixelsToAdd);
+
+            // Create new image and update currentImage
+            const dataURL = canvas.toDataURL('image/png');
+            const newImg = new Image();
+            newImg.onload = () => {
+                currentImage = newImg;  // Update current image
+                showImage(newImg);
+                downloadLink.download = `${currentFileName}-extended.png`;
+                
+                // Calculate what the output will be at target width
+                const outputHeight = Math.round(targetWidth * newHeight / w);
+                info.textContent = `${w} × ${newHeight} px (added ${pixelsToAdd}px) → ${targetWidth}p: ${targetWidth}×${outputHeight}px → after crop: ${targetWidth}×${originalAtTarget}px ✓`;
+                updateMathHelper();
+            };
+            newImg.src = dataURL;
+        });
+
+        replaceBtn.addEventListener('click', () => {
+            if (!currentImage) return;
+            
+            const w = currentImage.width;
+            const h = currentImage.height;
+            const targetWidth = getTargetWidth();
+            const logoHeightAtTarget = getPixels(); // User input (at target width)
+            
+            // Scale pixels to current image width
+            const pixels = Math.round(logoHeightAtTarget * w / targetWidth);
+            const replaceStart = h - pixels;
+
+            if (replaceStart <= 0) {
+                setStatus('Cannot replace that much - would cover entire image.');
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+
+            ctx.drawImage(currentImage, 0, 0);
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, replaceStart, w, pixels);
+
+            const dataURL = canvas.toDataURL('image/png');
+            const newImg = new Image();
+            newImg.onload = () => {
+                currentImage = newImg;  // Update current image
+                showImage(newImg);
+                downloadLink.download = `${currentFileName}-replaced.png`;
+                info.textContent = `${w} × ${h} px (bottom ${pixels}px replaced with black)`;
+            };
+            newImg.src = dataURL;
+        });
+
+        cropBtn.addEventListener('click', () => {
+            if (!currentImage) return;
+            
+            const w = currentImage.width;
+            const h = currentImage.height;
+            const targetWidth = getTargetWidth();
+            const logoHeightAtTarget = getPixels(); // User input (at target width)
+            
+            // Scale pixels to current image width
+            const pixels = Math.round(logoHeightAtTarget * w / targetWidth);
+
+            const newHeight = h - pixels;
+
+            if (newHeight <= 0) {
+                setStatus('Cannot crop that much - image would be too small.');
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = newHeight;
+            const ctx = canvas.getContext('2d');
+
+            // Draw only the top portion (cropping from bottom)
+            ctx.drawImage(currentImage, 0, 0, w, newHeight, 0, 0, w, newHeight);
+
+            const dataURL = canvas.toDataURL('image/png');
+            const newImg = new Image();
+            newImg.onload = () => {
+                currentImage = newImg;  // Update current image
+                showImage(newImg);
+                downloadLink.download = `${currentFileName}-cropped.png`;
+                info.textContent = `${w} × ${newHeight} px (removed ${pixels}px from bottom)`;
+            };
+            newImg.src = dataURL;
+        });
+
+        // DOWNLOAD BUTTON
+        downloadBtn.addEventListener('click', () => {
+            if (downloadLink.href) {
+                downloadLink.click();
+            }
+        });
+
+        // VIDEO DOWNLOAD BUTTON
+        videoDownloadBtn.addEventListener('click', () => {
+            if (!currentVideoFile || !frameCache.frames || frameCache.frames.length === 0) return;
+
+            if (downloadLink.href && !videoNeedsEncoding) {
+                downloadLink.click();
+                return;
+            }
+
+            (async () => {
+                try {
+                    framePlayback.stop();
+                    loading.classList.add('active');
+                    loading.textContent = 'Encoding video...';
+                    progressContainer.style.display = 'block';
+                    progressBar.style.width = '0%';
+                    const fps = frameCache.fps || parseInt(fpsSelector.value) || 16;
+                    const result = await extractVideoFrames(currentVideoFile, fps, 0, null, frameCache.height, true);
+                    frameCache.height = result.height;
+                    videoNeedsEncoding = false;
+                    if (frameViewer.canvas && frameViewer.canvas.height !== frameCache.height) {
+                        syncFrameViewerFromCache(frameViewer.currentFrame);
+                    }
+                    
+                    const url = URL.createObjectURL(result.blob);
+                    downloadLink.href = url;
+                    downloadLink.download = `${currentFileName}.${result.format || 'webm'}`;
+                    downloadLink.click();
+                } catch (error) {
+                    logError('Video download failed', error);
+                    setStatus('Error encoding video: ' + (error.message || 'Unknown error'));
+                } finally {
+                    loading.classList.remove('active');
+                    progressContainer.style.display = 'none';
+                }
+            })();
+        });
+
+        // VIDEO OPERATIONS - NO FFMPEG NEEDED!
+        
+        videoCropBtn.addEventListener('click', async () => {
+            if (!currentVideoFile) return;
+            
+            console.log('=== CROP VIDEO CLICKED ===');
+            console.log('Current file:', currentVideoFile.name);
+            
+            try {
+                loading.classList.add('active');
+                loading.textContent = 'Cropping video...';
+                console.log('[Crop] Loading video metadata...');
+                framePlayback.stop();
+                
+                // Get crop parameters
+                const video = document.createElement('video');
+                const videoURL = URL.createObjectURL(currentVideoFile);
+                video.src = videoURL;
+                await new Promise(resolve => video.onloadedmetadata = resolve);
+                
+                const width = Math.floor(video.videoWidth);
+                const height = Math.floor(video.videoHeight);
+                const targetWidth = getTargetWidth();
+                const logoHeightAtTarget = getPixels();
+                
+                console.log(`[Crop] Video: ${width}×${height}, Target: ${targetWidth}, Logo: ${logoHeightAtTarget}px`);
+                
+                // Scale pixels to current video width
+                const pixels = Math.round(logoHeightAtTarget * width / targetWidth);
+                let newHeight = height - pixels;
+                if (newHeight % 2 !== 0) {
+                    newHeight = newHeight - 1;
+                }
+                const removedPixels = height - newHeight;
+                
+                console.log(`[Crop] Removing ${removedPixels}px, new height: ${newHeight}px`);
+                
+                URL.revokeObjectURL(videoURL);
+                
+                if (newHeight <= 0) {
+                    setStatus('Cannot crop that much - video would be too small.');
+                    loading.classList.remove('active');
+                    progressContainer.style.display = 'none';
+                    return;
+                }
+                
+                // Get selected FPS
+                const fps = parseInt(fpsSelector.value) || 16;
+                console.log(`[Crop] Using FPS: ${fps}`);
+                
+                // Update cache and viewer without encoding
+                currentFileName = `${currentFileName}-cropped`;
+                
+                // Reuse cached frames (crop from top) without re-extraction
+                frameCache.fps = fps;
+                frameCache.height = newHeight;
+                videoNeedsEncoding = true;
+                downloadLink.removeAttribute('href');
+                
+                // Refresh viewer using cached frames
+                syncFrameViewerFromCache(frameViewer.currentFrame);
+                
+                info.textContent = `${width} × ${frameCache.height} px (cropped, ${removedPixels}px removed)`;
+                
+                loading.classList.remove('active');
+                progressContainer.style.display = 'none';
+                console.log('[Crop] Complete!');
+            } catch (error) {
+                loading.classList.remove('active');
+                progressContainer.style.display = 'none';
+                console.error('[Crop] ERROR:', error);
+                console.error('[Crop] Stack:', error.stack);
+                logError('Crop failed', error);
+                setStatus('Error cropping video: ' + (error.message || 'Unknown error'));
+            }
+        });
+
+        // TRIM START - Remove everything before current time
+        trimStartBtn.addEventListener('click', async () => {
+            if (!currentVideoFile || !frameCache.frames) return;
+            
+            const fps = parseInt(fpsSelector.value) || 16;
+            const currentFrame = frameViewer.currentFrame;
+            const trimTime = currentFrame / fps;
+            
+            if (currentFrame <= 0) {
+                setStatus('Already at the start of the video. Navigate forward to set trim point.');
+                return;
+            }
+            
+            try {
+                loading.classList.add('active');
+                loading.textContent = 'Trimming start...';
+                framePlayback.stop();
+                
+                const width = frameCache.width;
+                const height = frameCache.height;
+                const duration = frameCache.duration;
+
+                currentFileName = `${currentFileName}-trimmed`;
+                
+                // Reuse cached frames without re-extraction
+                const oldFrames = frameCache.frames;
+                const newFrames = oldFrames.slice(currentFrame);
+                for (let i = 0; i < currentFrame; i++) {
+                    if (oldFrames[i] && oldFrames[i].close) oldFrames[i].close();
+                }
+                frameCache.frames = newFrames;
+                frameCache.duration = newFrames.length / fps;
+                frameCache.fps = fps;
+                videoNeedsEncoding = true;
+                downloadLink.removeAttribute('href');
+                
+                // Refresh viewer using cached frames
+                syncFrameViewerFromCache(0);
+                
+                info.textContent = `${width} × ${height} px (trimmed start: ${currentFrame} frames removed)`;
+                
+                loading.classList.remove('active');
+                progressContainer.style.display = 'none';
+            } catch (error) {
+                loading.classList.remove('active');
+                progressContainer.style.display = 'none';
+                logError('Trim start failed', error);
+                setStatus('Error trimming video: ' + (error.message || 'Unknown error'));
+            }
+        });
+
+        // TRIM END - Remove everything after current time
+        trimEndBtn.addEventListener('click', async () => {
+            if (!currentVideoFile || !frameCache.frames) return;
+            
+            const fps = parseInt(fpsSelector.value) || 16;
+            const currentFrame = frameViewer.currentFrame;
+            const totalFrames = frameCache.frames.length - 1;
+            const trimTime = currentFrame / fps;
+            const duration = frameCache.duration;
+            
+            if (currentFrame >= totalFrames) {
+                setStatus('Already at the end of the video. Navigate backward to set trim point.');
+                return;
+            }
+            
+            try {
+                loading.classList.add('active');
+                loading.textContent = 'Trimming end...';
+                framePlayback.stop();
+                
+                const width = frameCache.width;
+                const height = frameCache.height;
+
+                currentFileName = `${currentFileName}-trimmed`;
+                
+                // Reuse cached frames without re-extraction
+                const oldFrames = frameCache.frames;
+                const newFrames = oldFrames.slice(0, currentFrame + 1);
+                for (let i = currentFrame + 1; i < oldFrames.length; i++) {
+                    if (oldFrames[i] && oldFrames[i].close) oldFrames[i].close();
+                }
+                frameCache.frames = newFrames;
+                frameCache.duration = newFrames.length / fps;
+                frameCache.fps = fps;
+                videoNeedsEncoding = true;
+                downloadLink.removeAttribute('href');
+                
+                // Refresh viewer using cached frames
+                syncFrameViewerFromCache(newFrames.length - 1);
+                
+                info.textContent = `${width} × ${height} px (trimmed end: ${totalFrames - currentFrame} frames removed)`;
+                
+                loading.classList.remove('active');
+                progressContainer.style.display = 'none';
+            } catch (error) {
+                loading.classList.remove('active');
+                progressContainer.style.display = 'none';
+                logError('Trim end failed', error);
+                setStatus('Error trimming video: ' + (error.message || 'Unknown error'));
+            }
+        });
+
+        extractFrameBtn.addEventListener('click', async () => {
+            if (!currentVideoFile || !frameCache.frames || frameCache.frames.length === 0) return;
+            
+            try {
+                loading.classList.add('active');
+                loading.textContent = 'Extracting frame...';
+                framePlayback.stop();
+                
+                // Get current frame from cache (already loaded!)
+                const currentFrame = frameViewer.currentFrame;
+                const cachedFrame = frameCache.frames[currentFrame];
+                
+                if (!cachedFrame) {
+                    throw new Error('Frame not available in cache');
+                }
+                
+                // Draw cached frame to temp canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = frameCache.width;
+                canvas.height = frameCache.height;
+                const ctx = canvas.getContext('2d');
+                const sourceHeight = frameCache.sourceHeight || frameCache.height;
+                if (frameCache.height < sourceHeight) {
+                    ctx.drawImage(cachedFrame, 0, 0, frameCache.width, frameCache.height, 0, 0, frameCache.width, frameCache.height);
+                } else {
+                    ctx.drawImage(cachedFrame, 0, 0, frameCache.width, sourceHeight, 0, 0, frameCache.width, frameCache.height);
+                }
+                
+                // Convert to image
+                const img = new Image();
+                img.src = canvas.toDataURL();
+                
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                });
+                
+                // Load into image editor
+                currentImage = img;
+                showImage(img);
+                
+                // Switch to image mode
+                frameViewer.canvas.style.display = 'none';
+                resultImage.style.display = 'block';
+                videoButtons.style.display = 'none';
+                imageButtons.style.display = 'flex';
+                videoControls.style.display = 'none';
+                
+                loading.classList.remove('active');
+                
+            } catch (error) {
+                loading.classList.remove('active');
+                setStatus('Error extracting frame: ' + (error.message || 'Unknown error'));
+                logError('Failed to extract frame', error);
+            }
+        });
+
+        // REFERENCE IMAGES FUNCTIONALITY
+        function closeReferenceModal() {
+            referenceModal.style.display = 'none';
+            referenceFilesInput.value = '';
+            referenceImages = [];
+            referencePreview.innerHTML = '';
+        }
+
+        addReferencesBtn.addEventListener('click', () => {
+            referenceModal.style.display = 'flex';
+        });
+
+        referenceFilesInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files).slice(0, 4); // Max 4 images
+            referenceImages = [];
+            referencePreview.innerHTML = '';
+            
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        referenceImages.push(img);
+                        
+                        // Show thumbnail
+                        const thumb = document.createElement('img');
+                        thumb.src = event.target.result;
+                        thumb.style.width = '60px';
+                        thumb.style.height = '60px';
+                        thumb.style.objectFit = 'cover';
+                        thumb.style.border = '1px solid #ddd';
+                        thumb.style.borderRadius = '4px';
+                        referencePreview.appendChild(thumb);
+                        
+                        // Show count when all loaded
+                        if (referenceImages.length === files.length) {
+                            const hint = document.createElement('div');
+                            hint.style.width = '100%';
+                            hint.style.marginTop = '10px';
+                            hint.style.fontSize = '13px';
+                            hint.style.fontWeight = 'bold';
+                            hint.style.color = '#0066cc';
+                            hint.textContent = `→ ${referenceImages.length} image${referenceImages.length > 1 ? 's' : ''} in horizontal row`;
+                            referencePreview.appendChild(hint);
+                        }
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+
+        applyReferencesBtn.addEventListener('click', () => {
+            if (!currentImage || referenceImages.length === 0) {
+                setStatus('Please upload at least one reference image.');
+                return;
+            }
+
+            addReferencesToImage();
+            closeReferenceModal();
+        });
+
+        function addReferencesToImage() {
+            const w = currentImage.width;
+            const h = currentImage.height;
+            const targetWidth = getTargetWidth();
+            const logoHeightAtTarget = getPixels(); // User input (at target width, default 276)
+            
+            // Scale reference height to current image width
+            const refHeight = Math.round(logoHeightAtTarget * w / targetWidth);
+            
+            // Check if image is tall enough
+            if (h < refHeight) {
+                setStatus(`Image is too small. Image height is ${h}px but references need ${refHeight}px. Use "Extend" first to add height.`);
+                return;
+            }
+            
+            // Create canvas - same size as current image
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            
+            // Draw original image
+            ctx.drawImage(currentImage, 0, 0);
+            
+            // Fill the bottom 276px with black first (clear any existing content)
+            const refY = h - refHeight; // Start of reference area (bottom 276px)
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, refY, w, refHeight);
+            
+            // Calculate reference positions - single row, left-aligned
+            const padding = Math.max(10, Math.round(w * 0.01)); // Padding around edges and between images
+            const gap = padding; // Gap between images
+            
+            // Calculate available width after left/right padding
+            const availableWidth = w - (padding * 2);
+            
+            // Calculate width per image: divide available width by number of images, minus gaps
+            const numImages = referenceImages.length;
+            const totalGaps = (numImages - 1) * gap;
+            const imageWidth = Math.floor((availableWidth - totalGaps) / numImages);
+            
+            // Available height after top/bottom padding
+            const imageHeight = refHeight - (padding * 2);
+            
+            // Draw all images in a single horizontal row, left-aligned
+            let xPos = padding; // Start from left edge + padding
+            const yPos = refY + padding; // Top edge + padding
+            
+            for (let i = 0; i < referenceImages.length; i++) {
+                if (referenceImages[i]) {
+                    drawImageFitNoPadding(ctx, referenceImages[i], xPos, yPos, imageWidth, imageHeight);
+                    xPos += imageWidth + gap; // Move to next position
+                }
+            }
+            
+            // Update display
+            const dataURL = canvas.toDataURL('image/png');
+            const img = new Image();
+            img.onload = () => {
+                currentImage = img;
+                showImage(img);
+                info.textContent = `${w} × ${h} px (references added to bottom ${refHeight}px)`;
+            };
+            img.src = dataURL;
+        }
+
+        // Helper function to fit image into rectangle (contain mode, fills entire slot)
+        function drawImageFitNoPadding(ctx, img, x, y, width, height) {
+            // Calculate scaled dimensions to fit (contain)
+            const imgRatio = img.width / img.height;
+            const boxRatio = width / height;
+            
+            let drawWidth, drawHeight, drawX, drawY;
+            
+            if (imgRatio > boxRatio) {
+                // Image wider - fit to width
+                drawWidth = width;
+                drawHeight = width / imgRatio;
+                drawX = x;
+                drawY = y + (height - drawHeight) / 2;
+            } else {
+                // Image taller - fit to height
+                drawHeight = height;
+                drawWidth = height * imgRatio;
+                drawX = x + (width - drawWidth) / 2;
+                drawY = y;
+            }
+            
+            // Draw image centered in slot (black background already filled)
+            ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+        }
+
+        function reset() {
+            fileInput.value = '';
+            preview.classList.remove('active');
+            
+            // Clear current state
+            currentImage = null;
+            currentVideoFile = null;
+            currentFileName = '';
+            videoNeedsEncoding = false;
+            
+            // Clear reference images state
+            referenceImages = [];
+            
+            // Clean up blob URLs to prevent memory leaks
+            if (downloadLink.href && downloadLink.href.startsWith('blob:')) {
+                URL.revokeObjectURL(downloadLink.href);
+            }
+            
+            // Reset UI
+            resultImage.src = '';
+            downloadLink.href = '';
+            imageButtons.style.display = 'none';
+            videoButtons.style.display = 'none';
+            videoControls.style.display = 'none'; // Hide video player controls
+            frameInfo.style.display = 'none';
+            errorConsole.innerHTML = '';
+            errorConsole.style.display = 'none';
+            
+            // Clear frame cache
+            clearFrameCache();
+            
+            // Hide frame viewer canvas if exists
+            if (frameViewer.canvas) {
+                frameViewer.canvas.style.display = 'none';
+            }
+            
+            // Re-enable FPS selector
+            fpsSelector.disabled = false;
+            fpsSelector.style.opacity = '1';
+            fpsSelector.style.cursor = 'pointer';
+            uploadArea.style.display = '';
+            fpsContainer.style.display = 'none';
+            imageSettings.style.display = 'none';
+            logoHeightSettings.style.display = 'none';
+            bitrateContainer.style.display = 'none';
+            detectedFpsLabel.textContent = '';
+            detectedBitrateLabel.textContent = '';
+            extractControls.style.display = 'none';
+            extractFramesBtn.disabled = false;
+        }
+
+    </script>
+</body>
+</html>
