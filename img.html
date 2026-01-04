@@ -731,6 +731,8 @@ No setup, no internet, no dependencies needed!
             
             // Clear frame cache for new video
             clearFrameCache();
+            demuxedCache = null;
+            demuxedCacheFile = null;
             
             // Hide video player, show canvas viewer
             resultImage.style.display = 'none';
@@ -899,13 +901,13 @@ No setup, no internet, no dependencies needed!
                 loading.textContent = 'Detecting settings...';
                 progressContainer.style.display = 'none';
                 
-                const buffer = await videoFile.arrayBuffer();
                 let demuxed = null;
-                const lowerName = (videoFile.name || '').toLowerCase();
-                if (videoFile.type === 'video/webm' || lowerName.endsWith('.webm')) {
-                    demuxed = parseWebm(buffer);
+                if (demuxedCacheFile === videoFile && demuxedCache) {
+                    demuxed = demuxedCache;
                 } else {
-                    demuxed = parseMp4(buffer);
+                    demuxed = await demuxVideoFile(videoFile);
+                    demuxedCache = demuxed;
+                    demuxedCacheFile = videoFile;
                 }
                 
                 const inferredFps = estimateFps(demuxed);
@@ -968,6 +970,8 @@ No setup, no internet, no dependencies needed!
             duration: 0,
             sourceHeight: 0
         };
+        let demuxedCache = null;
+        let demuxedCacheFile = null;
         
         // Clear cache when new video loaded
         function clearFrameCache() {
@@ -984,6 +988,8 @@ No setup, no internet, no dependencies needed!
                 duration: 0,
                 sourceHeight: 0
             };
+            demuxedCache = null;
+            demuxedCacheFile = null;
         }
         
         async function extractAllFrames(videoFile, fps) {
@@ -995,6 +1001,7 @@ No setup, no internet, no dependencies needed!
             let result;
             try {
                 result = await extractFrames(videoFile, fps, {
+                    demuxed: demuxedCacheFile === videoFile ? demuxedCache : null,
                     onProgress: ({ decodedFrames, expectedFrames, sampleIndex, totalSamples }) => {
                         const progress = expectedFrames
                             ? Math.round((decodedFrames / expectedFrames) * 100)

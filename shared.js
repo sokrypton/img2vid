@@ -164,11 +164,14 @@ function parseMp4(buffer) {
     let avcC = null;
     let width = view.getUint16(sampleEntryStart + 24, false);
     let height = view.getUint16(sampleEntryStart + 26, false);
-    let entryPtr = sampleEntryStart + 8 + 8 + 8;
+    let entryPtr = sampleEntryStart + 8 + 78;
     const entryEnd = sampleEntryStart + sampleEntrySize;
     while (entryPtr + 8 <= entryEnd) {
         const boxSize = readUint32(view, entryPtr);
         const boxType = readString(view, entryPtr + 4, 4);
+        if (boxSize < 8) {
+            break;
+        }
         if (boxType === 'avcC') {
             avcC = new Uint8Array(buffer.slice(entryPtr + 8, entryPtr + boxSize));
             break;
@@ -183,12 +186,12 @@ function parseMp4(buffer) {
     const sttsCount = readUint32(view, stts.start + stts.headerSize + 4);
     let sttsPtr = stts.start + stts.headerSize + 8;
     const sampleDeltas = [];
-    for (let i = 0; i < sttsCount; i++) {
-        const count = readUint32(view, sttsPtr);
-        const delta = readUint32(view, sttsPtr + 4);
-        for (let j = 0; j < count; j++) sampleDeltas.push(delta);
-        sttsPtr += 8;
-    }
+        for (let i = 0; i < sttsCount; i++) {
+            const count = readUint32(view, sttsPtr);
+            const delta = readUint32(view, sttsPtr + 4);
+            for (let j = 0; j < count; j++) sampleDeltas.push(delta);
+            sttsPtr += 8;
+        }
 
     const sampleSize = readUint32(view, stsz.start + stsz.headerSize + 4);
     const sampleCount = readUint32(view, stsz.start + stsz.headerSize + 8);
