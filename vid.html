@@ -659,6 +659,7 @@
                         clips[index - 1] = clips[index];
                         clips[index] = tmp;
                         renderClips();
+                        syncCropToOutput();
                         return;
                     }
                     if (action === 'down' && index < clips.length - 1) {
@@ -666,11 +667,13 @@
                         clips[index + 1] = clips[index];
                         clips[index] = tmp;
                         renderClips();
+                        syncCropToOutput();
                         return;
                     }
                     if (action === 'remove') {
                         clips.splice(index, 1);
                         renderClips();
+                        syncCropToOutput();
                         return;
                     }
                     if (action === 'frames') {
@@ -739,6 +742,7 @@
                 }
             });
             refreshGlobalPreview();
+            syncCropToOutput();
         }
 
         async function loadClipFrames(clip) {
@@ -845,6 +849,22 @@
                 }
             }
             return { outputWidth, outputHeight };
+        }
+
+        let lastOutputSize = { w: 0, h: 0 };
+
+        function syncCropToOutput() {
+            const { outputWidth, outputHeight } = getOutputDimensions();
+            if (!outputWidth || !outputHeight) return;
+            const sizeChanged = outputWidth !== lastOutputSize.w || outputHeight !== lastOutputSize.h;
+            if (sizeChanged) {
+                cropRect = null;
+                ensureCropRect(outputWidth, outputHeight);
+                lastOutputSize = { w: outputWidth, h: outputHeight };
+            } else if (!cropRect) {
+                ensureCropRect(outputWidth, outputHeight);
+            }
+            updateCropOverlay();
         }
 
         function drawMergedFrame(globalFrameIndex) {
@@ -1151,8 +1171,8 @@
         function drawFrameToCanvas(ctx, frame, outW, outH, mode) {
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, outW, outH);
-            const srcW = frame.displayWidth || frame.codedWidth;
-            const srcH = frame.displayHeight || frame.codedHeight;
+            const srcW = frame.width || frame.displayWidth || frame.codedWidth;
+            const srcH = frame.height || frame.displayHeight || frame.codedHeight;
             if (!srcW || !srcH) {
                 ctx.drawImage(frame, 0, 0, outW, outH);
                 return;
