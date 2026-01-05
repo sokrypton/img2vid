@@ -1065,7 +1065,7 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
             }
         });
 
-        // 5. Configure decoder based on codec type
+        // 5. Check codec support and configure decoder
         try {
             const config = {
                 codec: demuxed.codec,
@@ -1077,6 +1077,14 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
             // H.264/AVC requires description (avcC box), VP8/VP9 do not
             if (demuxed.description) {
                 config.description = demuxed.description;
+            }
+
+            // Check if codec is supported before attempting to configure
+            const support = await VideoDecoder.isConfigSupported(config);
+            if (!support.supported) {
+                decoder.close();
+                reject(new Error(`Codec not supported by WebCodecs: ${demuxed.codec}`));
+                return;
             }
 
             decoder.configure(config);
