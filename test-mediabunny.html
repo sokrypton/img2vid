@@ -74,17 +74,28 @@
 
             try {
                 const file = fileInput.files[0];
-                const arrayBuffer = await file.arrayBuffer();
 
-                // Test Mediabunny demuxing API
-                const { MP4Demuxer } = window.Mediabunny;
-                const demuxer = new MP4Demuxer(arrayBuffer);
+                // Correct Mediabunny API
+                const { Input, BlobSource, EncodedPacketSink, ALL_FORMATS } = window.Mediabunny;
+
+                // Create input from file
+                const input = new Input({
+                    source: new BlobSource(file),
+                    formats: ALL_FORMATS
+                });
+
+                // Get video track
+                const videoTrack = await input.getPrimaryVideoTrack();
+                const duration = await input.computeDuration();
+
+                // Create sink to read packets
+                const sink = new EncodedPacketSink(videoTrack);
 
                 let frameCount = 0;
                 const frames = [];
 
-                // Extract all video frames
-                for await (const packet of demuxer.readVideoPackets()) {
+                // Extract all video packets
+                for await (const packet of sink.packets()) {
                     frameCount++;
                     if (frameCount <= 5) { // Store first 5 for inspection
                         frames.push(packet);
@@ -97,13 +108,14 @@
                     <div class="success">
                         <strong>✅ Demuxing successful!</strong><br>
                         Extracted ${frameCount} video packets in ${elapsed.toFixed(2)}ms<br>
+                        Duration: ${duration.toFixed(2)}s<br>
+                        Video: ${videoTrack.displayWidth}×${videoTrack.displayHeight}<br>
                         <br>
                         <strong>First packet info:</strong><br>
                         ${frames.length > 0 ? `
-                            Type: ${frames[0].type}<br>
                             Timestamp: ${frames[0].timestamp}µs<br>
-                            Duration: ${frames[0].duration}µs<br>
-                            Data size: ${frames[0].data.byteLength} bytes
+                            Data size: ${frames[0].data.byteLength} bytes<br>
+                            Type: ${frames[0].type || 'N/A'}
                         ` : 'No packets'}
                     </div>
                 `;
@@ -114,6 +126,7 @@
                     <div class="error">
                         <strong>❌ Demuxing failed</strong><br>
                         Error: ${error.message}<br>
+                        Stack: <pre style="font-size:11px;">${error.stack}</pre>
                         Time elapsed: ${elapsed.toFixed(2)}ms
                     </div>
                 `;
@@ -182,9 +195,14 @@ const demuxed = await parseMp4(arrayBuffer);
 // Muxing (same API - compatible!)
 const muxer = new MP4Muxer({ target, video });
 
-// Demuxing (much simpler! 410 KB includes this)
-const demuxer = new MP4Demuxer(arrayBuffer);
-for await (const packet of demuxer.readVideoPackets()) {
+// Demuxing (different API, more abstracted)
+const input = new Input({
+  source: new BlobSource(file),
+  formats: ALL_FORMATS
+});
+const track = await input.getPrimaryVideoTrack();
+const sink = new EncodedPacketSink(track);
+for await (const packet of sink.packets()) {
   // Already parsed, ready to decode!
 }</pre>
 
