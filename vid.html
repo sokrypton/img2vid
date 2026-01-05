@@ -619,6 +619,7 @@
                             <input type="number" data-field="start" min="1" max="${clip.totalFrames}" value="${clip.startFrame + 1}">
                             <button class="secondary" data-action="set-end">Set End</button>
                             <input type="number" data-field="end" min="1" max="${clip.totalFrames}" value="${clip.endFrame + 1}">
+                            <button class="secondary" data-action="split">Split</button>
                         </div>
                     </div>
                 ` : '';
@@ -696,6 +697,49 @@
                         previewPlayback.stop();
                         clip.endFrame = clip.currentFrame;
                         if (clip.endFrame < clip.startFrame) clip.startFrame = clip.endFrame;
+                        renderClips();
+                        return;
+                    }
+                    if (action === 'split') {
+                        previewPlayback.stop();
+                        if (!clip.frames || !clip.frames.length) {
+                            setStatus('Load frames before splitting.');
+                            return;
+                        }
+                        const splitFrame = clip.currentFrame;
+                        if (splitFrame < clip.startFrame) {
+                            setStatus('Split point must be within the current range.');
+                            return;
+                        }
+                        if (splitFrame >= clip.endFrame) {
+                            setStatus('Split point must be before the end of the range.');
+                            return;
+                        }
+                        const rangeStart = clip.startFrame;
+                        const rangeEnd = clip.endFrame;
+                        const firstFrames = clip.frames.slice(rangeStart, splitFrame + 1);
+                        const secondFrames = clip.frames.slice(splitFrame + 1, rangeEnd + 1);
+                        const firstPart = {
+                            ...clip,
+                            id: Math.random().toString(36).slice(2),
+                            name: `${clip.name} (Part 1)`,
+                            frames: firstFrames,
+                            totalFrames: firstFrames.length,
+                            startFrame: 0,
+                            endFrame: Math.max(0, firstFrames.length - 1),
+                            currentFrame: Math.min(splitFrame - rangeStart, Math.max(0, firstFrames.length - 1))
+                        };
+                        const secondPart = {
+                            ...clip,
+                            id: Math.random().toString(36).slice(2),
+                            name: `${clip.name} (Part 2)`,
+                            frames: secondFrames,
+                            totalFrames: secondFrames.length,
+                            startFrame: 0,
+                            endFrame: Math.max(0, secondFrames.length - 1),
+                            currentFrame: 0
+                        };
+                        clips.splice(index, 1, firstPart, secondPart);
                         renderClips();
                         return;
                     }

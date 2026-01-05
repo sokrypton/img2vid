@@ -3,6 +3,10 @@ function readUint32(view, offset) {
     return view.getUint32(offset, false);
 }
 
+function readInt32(view, offset) {
+    return view.getInt32(offset, false);
+}
+
 function readUint64(view, offset) {
     const high = view.getUint32(offset, false);
     const low = view.getUint32(offset + 4, false);
@@ -153,6 +157,7 @@ function parseMp4(buffer) {
     const stsc = findChildren(stbl, ['stsc'])[0];
     const stco = findChildren(stbl, ['stco', 'co64'])[0];
     const stss = findChildren(stbl, ['stss'])[0];
+    const ctts = findChildren(stbl, ['ctts'])[0];
 
     const entryCount = readUint32(view, stsd.start + stsd.headerSize + 4);
     if (!entryCount) {
@@ -245,6 +250,22 @@ function parseMp4(buffer) {
         }
     }
 
+    let compositionOffsets = null;
+    if (ctts) {
+        const version = view.getUint8(ctts.start + ctts.headerSize);
+        const entryCount = readUint32(view, ctts.start + ctts.headerSize + 4);
+        compositionOffsets = [];
+        let cttsPtr = ctts.start + ctts.headerSize + 8;
+        for (let i = 0; i < entryCount; i++) {
+            const count = readUint32(view, cttsPtr);
+            const offset = version === 1 ? readInt32(view, cttsPtr + 4) : readUint32(view, cttsPtr + 4);
+            for (let j = 0; j < count; j++) {
+                compositionOffsets.push(offset);
+            }
+            cttsPtr += 8;
+        }
+    }
+
     const samples = [];
     let dts = 0;
     let sampleIndex = 0;
@@ -263,7 +284,8 @@ function parseMp4(buffer) {
         for (let i = 0; i < samplesPerChunk; i++) {
             const size = sampleSizes[sampleIndex];
             const offset = chunkOffsets[chunkIndex - 1] + offsetInChunk;
-            const timestampUs = Math.round((dts / timescale) * 1000000);
+            const ctsOffset = compositionOffsets ? (compositionOffsets[sampleIndex] || 0) : 0;
+            const timestampUs = Math.round(((dts + ctsOffset) / timescale) * 1000000);
             const key = syncSamples ? syncSamples.has(sampleIndex + 1) : true;
             samples.push({
                 timestampUs,

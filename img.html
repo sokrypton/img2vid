@@ -250,18 +250,6 @@ No setup, no internet, no dependencies needed!
             display: inline-block;
         }
         
-        #frameInfo {
-            font-size: 13px;
-            padding: 8px 12px;
-        }
-        
-        @media (min-width: 768px) {
-            #frameInfo {
-                font-size: 12px;
-                padding: 5px 10px;
-            }
-        }
-        
         /* Video scrubber (range slider) - mobile friendly */
         #videoScrubber {
             -webkit-appearance: none;
@@ -391,7 +379,6 @@ No setup, no internet, no dependencies needed!
                 <!-- Hidden download link (triggered by button) -->
                 <a id="downloadLink" download="modified-image.png" style="display:none;"></a>
                 
-                <div id="frameInfo" style="display:none; position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); color:white; padding:5px 10px; border-radius:4px; font-size:12px;"></div>
             </div>
         </div>
         
@@ -436,26 +423,6 @@ No setup, no internet, no dependencies needed!
             <div style="font-size: 11px; color: #666; margin-top: 5px;" id="mathHelper"></div>
         </div>
 
-        <div id="encodeSettings" style="display:none; margin-bottom:15px; padding:12px; background:#f8f9fa; border-radius:8px;">
-            <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:10px;">
-                <label for="fpsSelector" style="font-size:14px; color:#666; font-weight:600;">Video Frame Rate:</label>
-                <select id="fpsSelector" style="font-size:16px; padding:8px 12px; border:1px solid #ddd; border-radius:4px; background:white; cursor:pointer; min-width:220px;">
-                    <option value="16" selected>16 fps (AI Video Default)</option>
-                    <option value="24">24 fps (Film)</option>
-                    <option value="30">30 fps (Smooth)</option>
-                </select>
-                <label for="bitrateSelector" style="font-size:14px; color:#666; font-weight:600;">Bitrate:</label>
-                <select id="bitrateSelector" style="font-size:16px; padding:8px 12px; border:1px solid #ddd; border-radius:4px; background:white; cursor:pointer; min-width:140px;">
-                    <option value="2000000">2 Mbps</option>
-                    <option value="4000000">4 Mbps</option>
-                    <option value="6000000" selected>6 Mbps</option>
-                    <option value="8000000">8 Mbps</option>
-                    <option value="12000000">12 Mbps</option>
-                </select>
-                <span id="detectedBitrateLabel" style="font-size:12px; color:#999; min-width:120px;"></span>
-            </div>
-        </div>
-
             <div class="buttons" id="imageButtons" style="display:none;">
                 <button class="primary" id="extendBtn">Extend</button>
                 <button class="primary" id="replaceBtn">Replace</button>
@@ -466,11 +433,7 @@ No setup, no internet, no dependencies needed!
             </div>
 
             <div class="buttons" id="videoButtons" style="display:none;">
-                <button class="primary" id="videoCropBtn">Crop Video</button>
-                <button class="primary" id="trimStartBtn" title="Remove everything before current time">Trim Start</button>
-                <button class="primary" id="trimEndBtn" title="Remove everything after current time">Trim End</button>
                 <button class="primary" id="extractFrameBtn">Extract Frame</button>
-                <button class="primary" id="videoDownloadBtn">Download</button>
                 <button class="secondary" onclick="reset()">Clear</button>
             </div>
         </div>
@@ -519,12 +482,7 @@ No setup, no internet, no dependencies needed!
         const cropBtn = document.getElementById('cropBtn');
         const addReferencesBtn = document.getElementById('addReferencesBtn');
         const downloadBtn = document.getElementById('downloadBtn');
-        const videoCropBtn = document.getElementById('videoCropBtn');
-        const trimStartBtn = document.getElementById('trimStartBtn');
-        const trimEndBtn = document.getElementById('trimEndBtn');
         const extractFrameBtn = document.getElementById('extractFrameBtn');
-        const videoDownloadBtn = document.getElementById('videoDownloadBtn');
-        const frameInfo = document.getElementById('frameInfo');
         
         // Custom video controls
         const videoControls = document.getElementById('videoControls');
@@ -532,10 +490,6 @@ No setup, no internet, no dependencies needed!
         const frameBackBtn = document.getElementById('frameBackBtn');
         const frameForwardBtn = document.getElementById('frameForwardBtn');
         const videoScrubber = document.getElementById('videoScrubber');
-        const encodeSettings = document.getElementById('encodeSettings');
-        const fpsSelector = document.getElementById('fpsSelector');
-        const bitrateSelector = document.getElementById('bitrateSelector');
-        const detectedBitrateLabel = document.getElementById('detectedBitrateLabel');
         const currentFrameDisplay = document.getElementById('currentFrameDisplay');
         const totalFramesDisplay = document.getElementById('totalFramesDisplay');
         const imageSettings = document.getElementById('imageSettings');
@@ -550,7 +504,6 @@ No setup, no internet, no dependencies needed!
         let currentImage = null;              // Currently displayed image
         let currentVideoFile = null;          // Current video file (for video operations only)
         let currentFileName = '';
-        let videoNeedsEncoding = false;
         
         // Reference images state
         let referenceImages = [];
@@ -668,7 +621,6 @@ No setup, no internet, no dependencies needed!
 
         function loadImage(file) {
             currentFileName = file.name.replace(/\.[^/.]+$/, ''); // Remove extension
-            videoNeedsEncoding = false;
             
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -682,9 +634,7 @@ No setup, no internet, no dependencies needed!
                     imageButtons.style.display = 'flex';
                     videoButtons.style.display = 'none';
                     videoControls.style.display = 'none'; // Hide video player controls
-                    encodeSettings.style.display = 'none';
                     resultImage.style.display = 'block';
-                    frameInfo.style.display = 'none';
                     preview.classList.add('active');
                 };
                 img.src = e.target.result;
@@ -697,10 +647,8 @@ No setup, no internet, no dependencies needed!
             currentVideoFile = file;
             currentImage = null;
             uploadArea.style.display = 'none';
-            encodeSettings.style.display = 'none';
             imageSettings.style.display = 'none';
             logoHeightSettings.style.display = 'none';
-            videoNeedsEncoding = true;
             
             // Clear frame cache for new video
             clearFrameCache();
@@ -711,10 +659,8 @@ No setup, no internet, no dependencies needed!
             resultImage.style.display = 'none';
             imageButtons.style.display = 'none';
             videoButtons.style.display = 'none';
-            frameInfo.style.display = 'none';
             videoControls.style.display = 'none';
             downloadLink.removeAttribute('href');
-            detectedBitrateLabel.textContent = '';
             info.style.display = 'block';
             info.textContent = 'Loading frames…';
             initializeFrameViewer(file);
@@ -770,11 +716,8 @@ No setup, no internet, no dependencies needed!
             
             // Set up controls
             const totalFrames = frameCache.frames.length - 1; // 0-based
-            const fps = frameCache.fps || parseInt(fpsSelector.value) || 16;
             videoScrubber.max = totalFrames;
             videoScrubber.value = 0;
-            videoScrubber.dataset.fps = fps;
-            videoScrubber.dataset.totalFrames = totalFrames;
             
             totalFramesDisplay.textContent = totalFrames + 1;
             currentFrameDisplay.textContent = '1';
@@ -787,9 +730,8 @@ No setup, no internet, no dependencies needed!
             
             videoButtons.style.display = 'flex';
             videoControls.style.display = 'block';
-            imageSettings.style.display = '';
-            logoHeightSettings.style.display = '';
-            encodeSettings.style.display = '';
+            imageSettings.style.display = 'none';
+            logoHeightSettings.style.display = 'none';
             info.style.display = 'block';
             
             // Frames are extracted; keep encoding options available.
@@ -820,57 +762,16 @@ No setup, no internet, no dependencies needed!
             videoScrubber.value = frameIndex;
         }
 
-        function setFpsSelection(fpsValue) {
-            const rounded = Math.round(fpsValue);
-            const options = Array.from(fpsSelector.options).map(opt => parseInt(opt.value, 10));
-            if (options.includes(rounded)) {
-                fpsSelector.value = String(rounded);
-                return;
-            }
-            const closest = options.reduce((prev, curr) =>
-                Math.abs(curr - fpsValue) < Math.abs(prev - fpsValue) ? curr : prev
-            );
-            fpsSelector.value = String(closest);
-        }
-
-        function setBitrateSelection(bitrateValue) {
-            const options = Array.from(bitrateSelector.options).map(opt => parseInt(opt.value, 10));
-            if (!options.length) return;
-            const closest = options.reduce((prev, curr) =>
-                Math.abs(curr - bitrateValue) < Math.abs(prev - bitrateValue) ? curr : prev
-            );
-            bitrateSelector.value = String(closest);
-        }
-
-        function showDetectedBitrate(bitrateValue) {
-            if (!bitrateValue || !Number.isFinite(bitrateValue)) return;
-            const formatted = formatBitrateMbps(bitrateValue, 1);
-            detectedBitrateLabel.textContent = formatted ? `Estimated: ${formatted}` : '';
-        }
-
         const framePlayback = createFramePlayback({
             getTotalFrames: () => frameCache.frames.length,
             getCurrentFrame: () => frameViewer.currentFrame,
             drawFrame: (index) => drawFrame(index),
-            getFps: () => parseInt(fpsSelector.value) || 16,
+            getFps: () => frameCache.fps || 30,
             onStart: () => { playPauseBtn.textContent = '⏸ Pause'; },
             onStop: () => { playPauseBtn.textContent = '▶ Play'; }
         });
 
         // CUSTOM VIDEO CONTROLS
-        
-        // FPS selector change - only allow before video is loaded
-        fpsSelector.addEventListener('change', async () => {
-            videoNeedsEncoding = true;
-            downloadLink.removeAttribute('href');
-        });
-
-        bitrateSelector.addEventListener('change', () => {
-            if (currentVideoFile && frameCache.frames.length > 0) {
-                videoNeedsEncoding = true;
-                downloadLink.removeAttribute('href');
-            }
-        });
         
         // ROBUST FRAME EXTRACTOR - Seek to exact frame positions
         // FRAME CACHE SYSTEM - Extract once, encode many times
@@ -880,7 +781,6 @@ No setup, no internet, no dependencies needed!
             frames: [],             // Array of ImageBitmap objects
             width: 0,
             height: 0,
-            duration: 0,
             sourceHeight: 0
         };
         let demuxedCache = null;
@@ -898,7 +798,6 @@ No setup, no internet, no dependencies needed!
                 frames: [],
                 width: 0,
                 height: 0,
-                duration: 0,
                 sourceHeight: 0
             };
             demuxedCache = null;
@@ -930,109 +829,23 @@ No setup, no internet, no dependencies needed!
                 });
                 demuxedCache = result.demuxed;
                 demuxedCacheFile = videoFile;
-                if (result.inferredFps) {
-                    setFpsSelection(result.inferredFps);
-                }
-                if (result.bitrate) {
-                    showDetectedBitrate(result.bitrate);
-                    setBitrateSelection(result.bitrate);
-                }
             } catch (error) {
                 loading.classList.remove('active');
                 progressContainer.style.display = 'none';
                 throw error;
             }
 
-            const duration = result.frames.length / (result.fpsForDecode || 30);
             frameCache = {
                 videoFile: videoFile,
-                fps: result.fpsForDecode || 30,
+                fps: result.inferredFps || result.fpsForDecode || 30,
                 frames: result.frames,
                 width: result.width,
                 height: result.height,
-                duration: duration,
                 sourceHeight: result.height
             };
 
             loading.textContent = `Cached ${result.frames.length} frames in memory`;
             return frameCache;
-        }
-
-        // FRAME-PERFECT VIDEO EXTRACTOR using cached frames
-        async function extractVideoFrames(videoFile, fps, startTime = 0, endTime = null, cropHeight = null, useCacheOnly = false) {
-            console.log('[Encode] Starting video encoding');
-            console.log('[Encode] Start:', startTime, 'End:', endTime, 'Crop:', cropHeight);
-
-            if (useCacheOnly && (!frameCache.frames || frameCache.frames.length === 0)) {
-                throw new Error('No cached frames available for encoding.');
-            }
-
-            if (!useCacheOnly && (!frameCache.videoFile || frameCache.videoFile !== videoFile)) {
-                console.log('[Encode] Cache miss - extracting frames');
-                await extractAllFrames(videoFile);
-            } else if (!useCacheOnly) {
-                console.log('[Encode] Cache hit - using cached frames!');
-                loading.classList.add('active');
-                loading.textContent = 'Using cached frames (fast!)...';
-                progressContainer.style.display = 'block';
-                progressBar.style.width = '0%';
-            }
-
-            const width = frameCache.width;
-            const sourceHeight = frameCache.sourceHeight || frameCache.height;
-            const fullHeight = frameCache.height;
-            let height = cropHeight || fullHeight;
-            const duration = endTime !== null ? endTime : frameCache.duration;
-
-            if (width % 2 !== 0) {
-                throw new Error('Source width is odd. Processing will likely fail.');
-            }
-            if (height % 2 !== 0) {
-                height = height - 1;
-                console.warn('[Encode] Adjusted output height to even:', height);
-            }
-            if (height <= 0) {
-                throw new Error('Output height is too small after even-height adjustment.');
-            }
-
-            let startFrame = Math.round(startTime * fps);
-            let endFrame = Math.round(duration * fps) - 1;
-            let totalFrames = (endFrame - startFrame) + 1;
-            if (useCacheOnly) {
-                startFrame = 0;
-                endFrame = frameCache.frames.length - 1;
-                totalFrames = frameCache.frames.length;
-            }
-
-            console.log(`[Encode] Encoding frames ${startFrame} to ${endFrame} (${totalFrames} total)`);
-            loading.textContent = `Encoding frames: ${startFrame} to ${endFrame} (${totalFrames} total)`;
-
-            const selectedBitrate = parseInt(bitrateSelector.value, 10) || 6000000;
-            const blob = await encodeFramesWithCanvas({
-                width,
-                height,
-                fps,
-                bitrate: selectedBitrate,
-                frameCount: totalFrames,
-                getFrame: (i) => frameCache.frames[startFrame + i],
-                drawFrame: (ctx, frame) => {
-                    if (height < sourceHeight) {
-                        ctx.drawImage(frame, 0, 0, width, height, 0, 0, width, height);
-                    } else {
-                        ctx.drawImage(frame, 0, 0, width, sourceHeight, 0, 0, width, height);
-                    }
-                },
-                onProgress: ({ encodedFrames, totalFrames }) => {
-                    const progress = Math.round((encodedFrames / totalFrames) * 100);
-                    progressBar.style.width = progress + '%';
-                    loading.textContent = `Encoding frame ${startFrame + encodedFrames - 1} (${progress}%)`;
-                }
-            });
-
-            progressContainer.style.display = 'none';
-            loading.classList.remove('active');
-
-            return { blob, height, format: 'webm' };
         }
 
         // Play/Pause button
@@ -1230,224 +1043,6 @@ No setup, no internet, no dependencies needed!
             }
         });
 
-        // VIDEO DOWNLOAD BUTTON
-        videoDownloadBtn.addEventListener('click', () => {
-            if (!currentVideoFile || !frameCache.frames || frameCache.frames.length === 0) return;
-
-            if (downloadLink.href && !videoNeedsEncoding) {
-                downloadLink.click();
-                return;
-            }
-
-            (async () => {
-                try {
-                    framePlayback.stop();
-                    loading.classList.add('active');
-                    loading.textContent = 'Encoding video...';
-                    progressContainer.style.display = 'block';
-                    progressBar.style.width = '0%';
-                    const fps = frameCache.fps || parseInt(fpsSelector.value) || 16;
-                    const result = await extractVideoFrames(currentVideoFile, fps, 0, null, frameCache.height, true);
-                    frameCache.height = result.height;
-                    videoNeedsEncoding = false;
-                    if (frameViewer.canvas && frameViewer.canvas.height !== frameCache.height) {
-                        syncFrameViewerFromCache(frameViewer.currentFrame);
-                    }
-                    
-                    const url = URL.createObjectURL(result.blob);
-                    downloadLink.href = url;
-                    downloadLink.download = `${currentFileName}.${result.format || 'webm'}`;
-                    downloadLink.click();
-                } catch (error) {
-                    logError('Video download failed', error);
-                    setStatus('Error encoding video: ' + (error.message || 'Unknown error'));
-                } finally {
-                    loading.classList.remove('active');
-                    progressContainer.style.display = 'none';
-                }
-            })();
-        });
-
-        // VIDEO OPERATIONS - NO FFMPEG NEEDED!
-        
-        videoCropBtn.addEventListener('click', async () => {
-            if (!currentVideoFile) return;
-            
-            console.log('=== CROP VIDEO CLICKED ===');
-            console.log('Current file:', currentVideoFile.name);
-            
-            try {
-                loading.classList.add('active');
-                loading.textContent = 'Cropping video...';
-                console.log('[Crop] Loading video metadata...');
-                framePlayback.stop();
-                
-                // Get crop parameters
-                const video = document.createElement('video');
-                const videoURL = URL.createObjectURL(currentVideoFile);
-                video.src = videoURL;
-                await new Promise(resolve => video.onloadedmetadata = resolve);
-                
-                const width = Math.floor(video.videoWidth);
-                const height = Math.floor(video.videoHeight);
-                const targetWidth = getTargetWidth();
-                const logoHeightAtTarget = getPixels();
-                
-                console.log(`[Crop] Video: ${width}×${height}, Target: ${targetWidth}, Logo: ${logoHeightAtTarget}px`);
-                
-                // Scale pixels to current video width
-                const pixels = Math.round(logoHeightAtTarget * width / targetWidth);
-                let newHeight = height - pixels;
-                if (newHeight % 2 !== 0) {
-                    newHeight = newHeight - 1;
-                }
-                const removedPixels = height - newHeight;
-                
-                console.log(`[Crop] Removing ${removedPixels}px, new height: ${newHeight}px`);
-                
-                URL.revokeObjectURL(videoURL);
-                
-                if (newHeight <= 0) {
-                    setStatus('Cannot crop that much - video would be too small.');
-                    loading.classList.remove('active');
-                    progressContainer.style.display = 'none';
-                    return;
-                }
-                
-                // Get selected FPS
-                const fps = parseInt(fpsSelector.value) || 16;
-                console.log(`[Crop] Using FPS: ${fps}`);
-                
-                // Update cache and viewer without encoding
-                currentFileName = `${currentFileName}-cropped`;
-                
-                // Reuse cached frames (crop from top) without re-extraction
-                frameCache.fps = fps;
-                frameCache.height = newHeight;
-                videoNeedsEncoding = true;
-                downloadLink.removeAttribute('href');
-                
-                // Refresh viewer using cached frames
-                syncFrameViewerFromCache(frameViewer.currentFrame);
-                
-                info.textContent = `${width} × ${frameCache.height} px (cropped, ${removedPixels}px removed)`;
-                
-                loading.classList.remove('active');
-                progressContainer.style.display = 'none';
-                console.log('[Crop] Complete!');
-            } catch (error) {
-                loading.classList.remove('active');
-                progressContainer.style.display = 'none';
-                console.error('[Crop] ERROR:', error);
-                console.error('[Crop] Stack:', error.stack);
-                logError('Crop failed', error);
-                setStatus('Error cropping video: ' + (error.message || 'Unknown error'));
-            }
-        });
-
-        // TRIM START - Remove everything before current time
-        trimStartBtn.addEventListener('click', async () => {
-            if (!currentVideoFile || !frameCache.frames) return;
-            
-            const fps = parseInt(fpsSelector.value) || 16;
-            const currentFrame = frameViewer.currentFrame;
-            const trimTime = currentFrame / fps;
-            
-            if (currentFrame <= 0) {
-                setStatus('Already at the start of the video. Navigate forward to set trim point.');
-                return;
-            }
-            
-            try {
-                loading.classList.add('active');
-                loading.textContent = 'Trimming start...';
-                framePlayback.stop();
-                
-                const width = frameCache.width;
-                const height = frameCache.height;
-                const duration = frameCache.duration;
-
-                currentFileName = `${currentFileName}-trimmed`;
-                
-                // Reuse cached frames without re-extraction
-                const oldFrames = frameCache.frames;
-                const newFrames = oldFrames.slice(currentFrame);
-                for (let i = 0; i < currentFrame; i++) {
-                    if (oldFrames[i] && oldFrames[i].close) oldFrames[i].close();
-                }
-                frameCache.frames = newFrames;
-                frameCache.duration = newFrames.length / fps;
-                frameCache.fps = fps;
-                videoNeedsEncoding = true;
-                downloadLink.removeAttribute('href');
-                
-                // Refresh viewer using cached frames
-                syncFrameViewerFromCache(0);
-                
-                info.textContent = `${width} × ${height} px (trimmed start: ${currentFrame} frames removed)`;
-                
-                loading.classList.remove('active');
-                progressContainer.style.display = 'none';
-            } catch (error) {
-                loading.classList.remove('active');
-                progressContainer.style.display = 'none';
-                logError('Trim start failed', error);
-                setStatus('Error trimming video: ' + (error.message || 'Unknown error'));
-            }
-        });
-
-        // TRIM END - Remove everything after current time
-        trimEndBtn.addEventListener('click', async () => {
-            if (!currentVideoFile || !frameCache.frames) return;
-            
-            const fps = parseInt(fpsSelector.value) || 16;
-            const currentFrame = frameViewer.currentFrame;
-            const totalFrames = frameCache.frames.length - 1;
-            const trimTime = currentFrame / fps;
-            const duration = frameCache.duration;
-            
-            if (currentFrame >= totalFrames) {
-                setStatus('Already at the end of the video. Navigate backward to set trim point.');
-                return;
-            }
-            
-            try {
-                loading.classList.add('active');
-                loading.textContent = 'Trimming end...';
-                framePlayback.stop();
-                
-                const width = frameCache.width;
-                const height = frameCache.height;
-
-                currentFileName = `${currentFileName}-trimmed`;
-                
-                // Reuse cached frames without re-extraction
-                const oldFrames = frameCache.frames;
-                const newFrames = oldFrames.slice(0, currentFrame + 1);
-                for (let i = currentFrame + 1; i < oldFrames.length; i++) {
-                    if (oldFrames[i] && oldFrames[i].close) oldFrames[i].close();
-                }
-                frameCache.frames = newFrames;
-                frameCache.duration = newFrames.length / fps;
-                frameCache.fps = fps;
-                videoNeedsEncoding = true;
-                downloadLink.removeAttribute('href');
-                
-                // Refresh viewer using cached frames
-                syncFrameViewerFromCache(newFrames.length - 1);
-                
-                info.textContent = `${width} × ${height} px (trimmed end: ${totalFrames - currentFrame} frames removed)`;
-                
-                loading.classList.remove('active');
-                progressContainer.style.display = 'none';
-            } catch (error) {
-                loading.classList.remove('active');
-                progressContainer.style.display = 'none';
-                logError('Trim end failed', error);
-                setStatus('Error trimming video: ' + (error.message || 'Unknown error'));
-            }
-        });
-
         extractFrameBtn.addEventListener('click', async () => {
             if (!currentVideoFile || !frameCache.frames || frameCache.frames.length === 0) return;
             
@@ -1495,7 +1090,8 @@ No setup, no internet, no dependencies needed!
                 videoButtons.style.display = 'none';
                 imageButtons.style.display = 'flex';
                 videoControls.style.display = 'none';
-                encodeSettings.style.display = 'none';
+                imageSettings.style.display = '';
+                logoHeightSettings.style.display = '';
                 
                 loading.classList.remove('active');
                 
@@ -1668,7 +1264,6 @@ No setup, no internet, no dependencies needed!
             currentImage = null;
             currentVideoFile = null;
             currentFileName = '';
-            videoNeedsEncoding = false;
             
             // Clear reference images state
             referenceImages = [];
@@ -1684,7 +1279,6 @@ No setup, no internet, no dependencies needed!
             imageButtons.style.display = 'none';
             videoButtons.style.display = 'none';
             videoControls.style.display = 'none'; // Hide video player controls
-            frameInfo.style.display = 'none';
             errorConsole.innerHTML = '';
             errorConsole.style.display = 'none';
             
@@ -1700,8 +1294,6 @@ No setup, no internet, no dependencies needed!
             uploadArea.style.display = '';
             imageSettings.style.display = 'none';
             logoHeightSettings.style.display = 'none';
-            encodeSettings.style.display = 'none';
-            detectedBitrateLabel.textContent = '';
         }
 
     </script>
