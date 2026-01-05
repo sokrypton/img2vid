@@ -177,15 +177,19 @@ function parseMp4(buffer) {
         if (boxSize < 8) {
             break;
         }
-        if (boxType === 'avcC') {
+        if (boxType === 'avcC' || boxType === 'hvcC') {
             avcC = new Uint8Array(buffer.slice(entryPtr + 8, entryPtr + boxSize));
             break;
         }
         entryPtr += boxSize;
     }
 
-    if (codecType !== 'avc1' || !avcC) {
-        throw new Error('MP4 codec not supported: ' + codecType);
+    // Allow HEVC (hvc1/hev1) and other codecs for playback method
+    // Only H.264 with avcC is fully supported for WebCodecs
+    if (codecType === 'avc1' && !avcC) {
+        console.warn('⚠️ avcC box missing for H.264, playback method may work');
+    } else if (!['avc1', 'hvc1', 'hev1'].includes(codecType)) {
+        console.warn(`⚠️ Uncommon codec: ${codecType}, playback method may work`);
     }
 
     const sttsCount = readUint32(view, stts.start + stts.headerSize + 4);
@@ -303,11 +307,30 @@ function parseMp4(buffer) {
         }
     }
 
-    const profile = avcC[1];
-    const compat = avcC[2];
-    const level = avcC[3];
-    const codec = `avc1.${profile.toString(16).padStart(2, '0')}${compat.toString(16).padStart(2, '0')}${level.toString(16).padStart(2, '0')}`;
-    const description = avcC.buffer.slice(avcC.byteOffset, avcC.byteOffset + avcC.byteLength);
+    // Build codec string based on codec type
+    let codec;
+    let description = null;
+
+    if (codecType === 'avc1' && avcC && avcC.length >= 4) {
+        // H.264: construct codec string from avcC
+        const profile = avcC[1];
+        const compat = avcC[2];
+        const level = avcC[3];
+        codec = `avc1.${profile.toString(16).padStart(2, '0')}${compat.toString(16).padStart(2, '0')}${level.toString(16).padStart(2, '0')}`;
+        description = avcC.buffer.slice(avcC.byteOffset, avcC.byteOffset + avcC.byteLength);
+    } else if (['hvc1', 'hev1'].includes(codecType)) {
+        // HEVC: use codec type as-is, include hvcC if available
+        codec = codecType;
+        if (avcC) {
+            description = avcC.buffer.slice(avcC.byteOffset, avcC.byteOffset + avcC.byteLength);
+        }
+        console.log(`📦 HEVC video detected: ${codec}, WebCodecs may not support, will use playback method`);
+    } else {
+        // Other codecs: use as-is
+        codec = codecType;
+        console.log(`📦 Codec: ${codec}, attempting playback method`);
+    }
+
     const nativeFps = samples.length && duration ? samples.length / (duration / timescale) : null;
 
     return {
@@ -1004,6 +1027,16 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
 
                     decodedCount++;
 
+                    // Update progress as frames are decoded
+                    if (onProgress) {
+                        onProgress({
+                            decodedFrames: frames.length,
+                            expectedFrames: totalSamples,
+                            sampleIndex: decodedCount,
+                            totalSamples: totalSamples
+                        });
+                    }
+
                 } catch (error) {
                     console.error('Frame output error:', error);
                     videoFrame.close(); // Still close on error
@@ -1056,16 +1089,6 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
 
                 decoder.decode(chunk);
                 processedSamples++;
-
-                // Progress callback
-                if (onProgress) {
-                    onProgress({
-                        decodedFrames: frames.length,
-                        expectedFrames: totalSamples,
-                        sampleIndex: processedSamples,
-                        totalSamples: totalSamples
-                    });
-                }
             }
 
             // 7. Flush decoder and wait for all frames

@@ -372,7 +372,14 @@ No setup, no internet, no dependencies needed!
 </head>
 <body>
     <div class="container">
-        <h1>Image Editor</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h1 style="margin: 0;">Image Editor</h1>
+            <label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">
+                <input type="checkbox" id="useWebCodecsToggleImg" checked style="margin-right: 6px;">
+                <span>Use WebCodecs</span>
+                <span id="webCodecsSupportImg" style="margin-left: 6px; font-size: 11px;"></span>
+            </label>
+        </div>
 
         <div class="upload-area" id="uploadArea">
             <p>Click or drag to upload image or video</p>
@@ -416,14 +423,6 @@ No setup, no internet, no dependencies needed!
             </div>
         </div>
         <div class="error-console" id="errorConsole" style="display:none;"></div>
-
-        <div id="webCodecsSettings" style="display:none; margin-bottom: 15px;">
-            <label style="display: flex; align-items: center; cursor: pointer;">
-                <input type="checkbox" id="useWebCodecsToggleImg" style="margin-right: 8px; width: 18px; height: 18px;">
-                <span style="font-weight: bold;">Use WebCodecs for extraction</span>
-            </label>
-            <div style="font-size: 11px; color: #666; margin-top: 2px; margin-left: 26px;" id="webCodecsSupportImg"></div>
-        </div>
 
         <div id="imageSettings" style="display:none; margin-bottom: 15px;">
             <label for="aspectRatioInput">Target width (px): </label>
@@ -632,7 +631,7 @@ No setup, no internet, no dependencies needed!
         }
 
         const savedPrefImg = localStorage.getItem('useWebCodecsImg');
-        if (savedPrefImg !== null) useWebCodecsToggleImg.checked = savedPrefImg === 'true';
+        useWebCodecsToggleImg.checked = savedPrefImg !== null ? savedPrefImg === 'true' : true; // Default to true
 
         useWebCodecsToggleImg.addEventListener('change', () => {
             localStorage.setItem('useWebCodecsImg', useWebCodecsToggleImg.checked);
@@ -684,7 +683,6 @@ No setup, no internet, no dependencies needed!
             uploadArea.style.display = 'none';
             imageSettings.style.display = 'none';
             logoHeightSettings.style.display = 'none';
-            webCodecsSettings.style.display = 'none';
 
             // Clear frame cache for new video
             clearFrameCache();
@@ -766,7 +764,6 @@ No setup, no internet, no dependencies needed!
             
             videoButtons.style.display = 'flex';
             videoControls.style.display = 'block';
-            webCodecsSettings.style.display = 'block';
             imageSettings.style.display = 'none';
             logoHeightSettings.style.display = 'none';
             info.style.display = 'block';
@@ -1140,7 +1137,6 @@ No setup, no internet, no dependencies needed!
                 videoButtons.style.display = 'none';
                 imageButtons.style.display = 'flex';
                 videoControls.style.display = 'none';
-                webCodecsSettings.style.display = 'none';
                 imageSettings.style.display = '';
                 logoHeightSettings.style.display = '';
                 
