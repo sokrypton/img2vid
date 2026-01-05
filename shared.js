@@ -993,12 +993,19 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
     let lastTimestamp = -1;
     let duplicateTimestampCount = 0;
 
+    // Track timestamps to detect frame loss
+    const expectedTimestamps = demuxed.samples.map(s => s.timestampUs || 0);
+    const receivedTimestamps = [];
+
     // 4. Create VideoDecoder with output handler
     return new Promise(async (resolve, reject) => {
         const decoder = new VideoDecoder({
             output: async (videoFrame) => {
                 try {
                     let shouldCapture = true;
+
+                    // Track received timestamp
+                    receivedTimestamps.push(videoFrame.timestamp);
 
                     // Detect duplicate timestamps (indicates decoder is outputting duplicate frames)
                     if (videoFrame.timestamp === lastTimestamp) {
@@ -1129,16 +1136,51 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
                     });
                 }
 
+                // Detailed frame loss analysis
+                console.group('🔍 WebCodecs Frame Analysis');
+                console.log(`Expected samples: ${totalSamples}`);
+                console.log(`Received frames: ${receivedTimestamps.length}`);
+                console.log(`Stored frames: ${frames.length}`);
+
                 if (skipDuplicates) {
-                    console.log(`📊 WebCodecs summary: ${totalSamples} samples → ${frames.length} unique frames (${skippedCount} duplicates removed)`);
+                    console.log(`📊 ${totalSamples} samples → ${frames.length} unique frames (${skippedCount} duplicates removed)`);
                 } else {
-                    console.log(`📊 WebCodecs summary: ${totalSamples} samples → ${frames.length} frames (deduplication disabled for VFR accuracy)`);
+                    console.log(`📊 ${totalSamples} samples → ${frames.length} frames (deduplication disabled)`);
                 }
 
-                if (duplicateTimestampCount > 0) {
-                    console.error(`❌ FRAME LOSS DETECTED: ${duplicateTimestampCount} duplicate timestamps found!`);
-                    console.error(`This indicates the decoder dropped frames on this device. Consider using playback method on mobile.`);
+                // Check for missing timestamps
+                const receivedSet = new Set(receivedTimestamps);
+                const missingTimestamps = expectedTimestamps.filter(ts => !receivedSet.has(ts));
+
+                if (missingTimestamps.length > 0) {
+                    console.error(`❌ FRAME LOSS: ${missingTimestamps.length} frames never received from decoder!`);
+                    console.error('Missing timestamps (µs):', missingTimestamps.slice(0, 10));
+                    if (missingTimestamps.length > 10) {
+                        console.error(`... and ${missingTimestamps.length - 10} more`);
+                    }
                 }
+
+                // Check for duplicate timestamps
+                if (duplicateTimestampCount > 0) {
+                    console.error(`❌ DUPLICATE FRAMES: ${duplicateTimestampCount} frames with duplicate timestamps!`);
+                    console.error(`This means the decoder output the same frame multiple times.`);
+                }
+
+                // Check for unexpected timestamps (frames we didn't queue)
+                const expectedSet = new Set(expectedTimestamps);
+                const unexpectedTimestamps = receivedTimestamps.filter(ts => !expectedSet.has(ts));
+                if (unexpectedTimestamps.length > 0) {
+                    console.warn(`⚠️ UNEXPECTED FRAMES: ${unexpectedTimestamps.length} frames with unexpected timestamps`);
+                    console.warn('Unexpected timestamps (µs):', unexpectedTimestamps.slice(0, 10));
+                }
+
+                // Summary
+                if (missingTimestamps.length === 0 && duplicateTimestampCount === 0 && unexpectedTimestamps.length === 0) {
+                    console.log('✅ All frames decoded successfully!');
+                } else {
+                    console.error('⚠️ Frame loss/duplication detected. Consider using playback method on this device.');
+                }
+                console.groupEnd();
 
                 resolve({
                     frames: frames,
