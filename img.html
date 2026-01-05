@@ -379,21 +379,6 @@ No setup, no internet, no dependencies needed!
     <div class="container">
         <h1>Image Editor</h1>
 
-        <!-- FPS Selector (shown after video upload) -->
-        <div id="fpsContainer" style="display:none; margin-bottom:20px; padding:15px; background:#f8f9fa; border-radius:8px;">
-            <div style="display:flex; flex-direction:column; align-items:center; gap:10px;">
-                <div style="display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;">
-                    <label for="fpsSelector" style="font-size:14px; color:#666; font-weight:600;">Video Frame Rate:</label>
-                    <select id="fpsSelector" style="font-size:16px; padding:8px 12px; border:1px solid #ddd; border-radius:4px; background:white; cursor:pointer; min-width:260px;">
-                        <option value="16" selected>16 fps (AI Video Default)</option>
-                        <option value="24">24 fps (Film)</option>
-                        <option value="30">30 fps (Smooth)</option>
-                    </select>
-                    <span id="detectedFpsLabel" style="font-size:12px; color:#999; min-width:120px;"></span>
-                </div>
-            </div>
-        </div>
-
         <div class="upload-area" id="uploadArea">
             <p>Click or drag to upload image or video</p>
             <input type="file" id="fileInput" accept="image/*,video/mp4,video/webm,video/quicktime">
@@ -429,10 +414,6 @@ No setup, no internet, no dependencies needed!
             </div>
         </div>
 
-        <div id="extractControls" style="display:none; margin-top:15px; text-align:center;">
-            <button class="primary" id="extractFramesBtn" style="min-width:180px;">Extract Frames</button>
-        </div>
-        
         <div class="info" id="info"></div>
         <div class="loading" id="loading">Processing...</div>
         <div style="display:none; margin-top:10px;" id="progressContainer">
@@ -443,20 +424,26 @@ No setup, no internet, no dependencies needed!
         <div class="error-console" id="errorConsole" style="display:none;"></div>
         
         <div id="imageSettings" style="display:none; margin-bottom: 15px;">
-            <label for="aspectRatioInput">Target width (for resize): </label>
+            <label for="aspectRatioInput">Target width (px): </label>
             <input type="number" id="aspectRatioInput" value="1080" min="100" max="4000" style="width: 80px; padding: 5px;">
             <span>px</span>
         </div>
         
         <div id="logoHeightSettings" style="display:none; margin-bottom: 15px;">
-            <label for="pixelInput">Logo height to remove: </label>
+            <label for="pixelInput">Extra height (px): </label>
             <input type="number" id="pixelInput" value="276" min="1" max="2000" style="width: 70px; padding: 5px;">
             <span>px</span>
             <div style="font-size: 11px; color: #666; margin-top: 5px;" id="mathHelper"></div>
         </div>
 
-        <div id="bitrateContainer" style="display:none; margin-bottom:15px; padding:12px; background:#f8f9fa; border-radius:8px;">
-            <div style="display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;">
+        <div id="encodeSettings" style="display:none; margin-bottom:15px; padding:12px; background:#f8f9fa; border-radius:8px;">
+            <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:10px;">
+                <label for="fpsSelector" style="font-size:14px; color:#666; font-weight:600;">Video Frame Rate:</label>
+                <select id="fpsSelector" style="font-size:16px; padding:8px 12px; border:1px solid #ddd; border-radius:4px; background:white; cursor:pointer; min-width:220px;">
+                    <option value="16" selected>16 fps (AI Video Default)</option>
+                    <option value="24">24 fps (Film)</option>
+                    <option value="30">30 fps (Smooth)</option>
+                </select>
                 <label for="bitrateSelector" style="font-size:14px; color:#666; font-weight:600;">Bitrate:</label>
                 <select id="bitrateSelector" style="font-size:16px; padding:8px 12px; border:1px solid #ddd; border-radius:4px; background:white; cursor:pointer; min-width:140px;">
                     <option value="2000000">2 Mbps</option>
@@ -545,16 +532,12 @@ No setup, no internet, no dependencies needed!
         const frameBackBtn = document.getElementById('frameBackBtn');
         const frameForwardBtn = document.getElementById('frameForwardBtn');
         const videoScrubber = document.getElementById('videoScrubber');
+        const encodeSettings = document.getElementById('encodeSettings');
         const fpsSelector = document.getElementById('fpsSelector');
         const bitrateSelector = document.getElementById('bitrateSelector');
-        const bitrateContainer = document.getElementById('bitrateContainer');
-        const detectedFpsLabel = document.getElementById('detectedFpsLabel');
         const detectedBitrateLabel = document.getElementById('detectedBitrateLabel');
         const currentFrameDisplay = document.getElementById('currentFrameDisplay');
         const totalFramesDisplay = document.getElementById('totalFramesDisplay');
-        const extractControls = document.getElementById('extractControls');
-        const extractFramesBtn = document.getElementById('extractFramesBtn');
-        const fpsContainer = document.getElementById('fpsContainer');
         const imageSettings = document.getElementById('imageSettings');
         const logoHeightSettings = document.getElementById('logoHeightSettings');
         
@@ -654,14 +637,6 @@ No setup, no internet, no dependencies needed!
         // Upload click
         uploadArea.addEventListener('click', () => fileInput.click());
 
-        extractFramesBtn.addEventListener('click', () => {
-            if (!currentVideoFile) return;
-            extractFramesBtn.disabled = true;
-            initializeFrameViewer(currentVideoFile).finally(() => {
-                extractFramesBtn.disabled = false;
-            });
-        });
-
         // Drag and drop
         uploadArea.addEventListener('dragover', (e) => e.preventDefault());
         uploadArea.addEventListener('drop', (e) => {
@@ -707,8 +682,7 @@ No setup, no internet, no dependencies needed!
                     imageButtons.style.display = 'flex';
                     videoButtons.style.display = 'none';
                     videoControls.style.display = 'none'; // Hide video player controls
-                    fpsContainer.style.display = 'none';
-                    bitrateContainer.style.display = 'none';
+                    encodeSettings.style.display = 'none';
                     resultImage.style.display = 'block';
                     frameInfo.style.display = 'none';
                     preview.classList.add('active');
@@ -723,10 +697,9 @@ No setup, no internet, no dependencies needed!
             currentVideoFile = file;
             currentImage = null;
             uploadArea.style.display = 'none';
-            fpsContainer.style.display = '';
+            encodeSettings.style.display = 'none';
             imageSettings.style.display = 'none';
             logoHeightSettings.style.display = 'none';
-            bitrateContainer.style.display = 'none';
             videoNeedsEncoding = true;
             
             // Clear frame cache for new video
@@ -741,17 +714,10 @@ No setup, no internet, no dependencies needed!
             frameInfo.style.display = 'none';
             videoControls.style.display = 'none';
             downloadLink.removeAttribute('href');
-            extractControls.style.display = 'block';
-            extractFramesBtn.disabled = true;
-            detectedFpsLabel.textContent = '';
             detectedBitrateLabel.textContent = '';
             info.style.display = 'block';
-            info.textContent = 'Detecting FPS/bitrate… adjust if needed, then click Extract Frames.';
-            
-            // Detect settings before extraction
-            detectVideoSettings(file).finally(() => {
-                extractFramesBtn.disabled = false;
-            });
+            info.textContent = 'Loading frames…';
+            initializeFrameViewer(file);
         }
         
         // FRAME-BASED VIDEO VIEWER
@@ -769,13 +735,9 @@ No setup, no internet, no dependencies needed!
                 videoControls.style.display = 'none';
                 videoButtons.style.display = 'none';
                 info.style.display = 'none';
-                extractControls.style.display = 'none';
-                
-                // Get FPS from selector
-                const fps = parseInt(fpsSelector.value) || 16;
                 
                 // Extract all frames to cache
-                await extractAllFrames(videoFile, fps);
+                await extractAllFrames(videoFile);
                 syncFrameViewerFromCache(0);
                 
             } catch (error) {
@@ -827,13 +789,10 @@ No setup, no internet, no dependencies needed!
             videoControls.style.display = 'block';
             imageSettings.style.display = '';
             logoHeightSettings.style.display = '';
-            bitrateContainer.style.display = '';
+            encodeSettings.style.display = '';
             info.style.display = 'block';
             
-            // Disable FPS selector - frames are extracted, user must re-upload to change
-            fpsSelector.disabled = true;
-            fpsSelector.style.opacity = '0.6';
-            fpsSelector.style.cursor = 'not-allowed';
+            // Frames are extracted; keep encoding options available.
             
             loading.classList.remove('active');
             progressContainer.style.display = 'none';
@@ -862,7 +821,6 @@ No setup, no internet, no dependencies needed!
         }
 
         function setFpsSelection(fpsValue) {
-            if (fpsSelector.disabled) return;
             const rounded = Math.round(fpsValue);
             const options = Array.from(fpsSelector.options).map(opt => parseInt(opt.value, 10));
             if (options.includes(rounded)) {
@@ -884,53 +842,12 @@ No setup, no internet, no dependencies needed!
             bitrateSelector.value = String(closest);
         }
 
-        function showDetectedFps(fpsValue) {
-            if (!fpsValue || !Number.isFinite(fpsValue)) return;
-            detectedFpsLabel.textContent = `Detected: ${fpsValue.toFixed(2)} fps`;
-        }
-
         function showDetectedBitrate(bitrateValue) {
             if (!bitrateValue || !Number.isFinite(bitrateValue)) return;
             const formatted = formatBitrateMbps(bitrateValue, 1);
             detectedBitrateLabel.textContent = formatted ? `Estimated: ${formatted}` : '';
         }
 
-        async function detectVideoSettings(videoFile) {
-            try {
-                loading.classList.add('active');
-                loading.textContent = 'Detecting settings...';
-                progressContainer.style.display = 'none';
-                
-                let demuxed = null;
-                if (demuxedCacheFile === videoFile && demuxedCache) {
-                    demuxed = demuxedCache;
-                } else {
-                    demuxed = await demuxVideoFile(videoFile);
-                    demuxedCache = demuxed;
-                    demuxedCacheFile = videoFile;
-                }
-                
-                const inferredFps = estimateFps(demuxed);
-                if (inferredFps) {
-                    showDetectedFps(inferredFps);
-                    setFpsSelection(inferredFps);
-                }
-                
-                const duration = demuxed && demuxed.duration ? demuxed.duration : 0;
-                if (duration && videoFile.size) {
-                    const estimatedBitrate = estimateBitrate(videoFile.size, duration);
-                    showDetectedBitrate(estimatedBitrate);
-                    setBitrateSelection(estimatedBitrate);
-                }
-            } catch (error) {
-                console.warn('[Detect] Failed to detect settings:', error);
-                logError('Detection failed', error);
-                setStatus('Detection failed; using defaults.');
-            } finally {
-                loading.classList.remove('active');
-            }
-        }
-        
         const framePlayback = createFramePlayback({
             getTotalFrames: () => frameCache.frames.length,
             getCurrentFrame: () => frameViewer.currentFrame,
@@ -944,12 +861,8 @@ No setup, no internet, no dependencies needed!
         
         // FPS selector change - only allow before video is loaded
         fpsSelector.addEventListener('change', async () => {
-            // If video is already loaded, this shouldn't happen (selector is disabled)
-            // But just in case, do nothing
-            if (currentVideoFile && frameCache.frames.length > 0) {
-                console.log('[FPS] Selector disabled - video already loaded');
-                return;
-            }
+            videoNeedsEncoding = true;
+            downloadLink.removeAttribute('href');
         });
 
         bitrateSelector.addEventListener('change', () => {
@@ -992,7 +905,7 @@ No setup, no internet, no dependencies needed!
             demuxedCacheFile = null;
         }
         
-        async function extractAllFrames(videoFile, fps) {
+        async function extractAllFrames(videoFile) {
             loading.classList.add('active');
             loading.textContent = 'Preparing decoder...';
             progressContainer.style.display = 'block';
@@ -1000,7 +913,8 @@ No setup, no internet, no dependencies needed!
 
             let result;
             try {
-                result = await extractFrames(videoFile, fps, {
+                result = await extractFramesWithMeta(videoFile, {
+                    captureAll: true,
                     demuxed: demuxedCacheFile === videoFile ? demuxedCache : null,
                     onProgress: ({ decodedFrames, expectedFrames, sampleIndex, totalSamples }) => {
                         const progress = expectedFrames
@@ -1014,16 +928,25 @@ No setup, no internet, no dependencies needed!
                         }
                     }
                 });
+                demuxedCache = result.demuxed;
+                demuxedCacheFile = videoFile;
+                if (result.inferredFps) {
+                    setFpsSelection(result.inferredFps);
+                }
+                if (result.bitrate) {
+                    showDetectedBitrate(result.bitrate);
+                    setBitrateSelection(result.bitrate);
+                }
             } catch (error) {
                 loading.classList.remove('active');
                 progressContainer.style.display = 'none';
                 throw error;
             }
 
-            const duration = result.frames.length / fps;
+            const duration = result.frames.length / (result.fpsForDecode || 30);
             frameCache = {
                 videoFile: videoFile,
-                fps: fps,
+                fps: result.fpsForDecode || 30,
                 frames: result.frames,
                 width: result.width,
                 height: result.height,
@@ -1044,9 +967,9 @@ No setup, no internet, no dependencies needed!
                 throw new Error('No cached frames available for encoding.');
             }
 
-            if (!useCacheOnly && (!frameCache.videoFile || frameCache.videoFile !== videoFile || frameCache.fps !== fps)) {
+            if (!useCacheOnly && (!frameCache.videoFile || frameCache.videoFile !== videoFile)) {
                 console.log('[Encode] Cache miss - extracting frames');
-                await extractAllFrames(videoFile, fps);
+                await extractAllFrames(videoFile);
             } else if (!useCacheOnly) {
                 console.log('[Encode] Cache hit - using cached frames!');
                 loading.classList.add('active');
@@ -1572,6 +1495,7 @@ No setup, no internet, no dependencies needed!
                 videoButtons.style.display = 'none';
                 imageButtons.style.display = 'flex';
                 videoControls.style.display = 'none';
+                encodeSettings.style.display = 'none';
                 
                 loading.classList.remove('active');
                 
@@ -1773,18 +1697,11 @@ No setup, no internet, no dependencies needed!
             }
             
             // Re-enable FPS selector
-            fpsSelector.disabled = false;
-            fpsSelector.style.opacity = '1';
-            fpsSelector.style.cursor = 'pointer';
             uploadArea.style.display = '';
-            fpsContainer.style.display = 'none';
             imageSettings.style.display = 'none';
             logoHeightSettings.style.display = 'none';
-            bitrateContainer.style.display = 'none';
-            detectedFpsLabel.textContent = '';
+            encodeSettings.style.display = 'none';
             detectedBitrateLabel.textContent = '';
-            extractControls.style.display = 'none';
-            extractFramesBtn.disabled = false;
         }
 
     </script>

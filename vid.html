@@ -347,17 +347,6 @@
             <input type="file" id="fileInput" accept="video/mp4,video/webm,video/quicktime" multiple>
         </div>
 
-        <div class="controls">
-            <div class="control-row">
-                <label for="fpsSelector">Output FPS:</label>
-                <select id="fpsSelector">
-                    <option value="16" selected>16 fps</option>
-                    <option value="24">24 fps</option>
-                    <option value="30">30 fps</option>
-                </select>
-            </div>
-        </div>
-
         <div class="info" id="info">Upload at least one clip to edit or merge.</div>
         <div class="loading" id="loading">Working…</div>
         <div class="progress" id="progressContainer">
@@ -403,6 +392,12 @@
 
         <div class="controls" id="downloadControls" style="margin-top:15px; display:none;">
             <div class="control-row">
+                <label for="fpsSelector">Output FPS:</label>
+                <select id="fpsSelector">
+                    <option value="16" selected>16 fps</option>
+                    <option value="24">24 fps</option>
+                    <option value="30">30 fps</option>
+                </select>
                 <label for="bitrateSelector">Bitrate:</label>
                 <select id="bitrateSelector">
                     <option value="2000000">2 Mbps</option>
@@ -472,16 +467,7 @@
         });
 
         fpsSelector.addEventListener('change', () => {
-            const fps = parseInt(fpsSelector.value, 10) || 16;
-            clips.forEach(clip => {
-                clip.totalFrames = Math.max(1, Math.round(clip.duration * fps));
-                clip.startFrame = Math.min(clip.startFrame, clip.totalFrames - 1);
-                clip.endFrame = Math.min(clip.endFrame, clip.totalFrames - 1);
-                clip.frames = null;
-                clip.viewerOpen = false;
-                clip.currentFrame = 0;
-            });
-            renderClips();
+            previewPlayback.stop();
         });
 
         mergeBtnBottom.addEventListener('click', () => mergeClips());
@@ -547,8 +533,9 @@
                             duration = meta.duration;
                         }
                     }
-                    const fps = parseInt(fpsSelector.value, 10) || 16;
-                    const totalFrames = Math.max(1, Math.round(duration * fps));
+                    const totalFrames = demuxed.samples && demuxed.samples.length
+                        ? demuxed.samples.length
+                        : Math.max(1, Math.round(duration * (parseInt(fpsSelector.value, 10) || 16)));
                     const bitrate = estimateBitrate(file.size, duration);
                     const fpsEstimate = estimateFps(demuxed);
                     clips.push({
@@ -585,8 +572,8 @@
                 clip.viewerOpen = true;
                 renderClips();
             }
-            fpsSelector.disabled = true;
-            fpsSelector.style.opacity = '0.6';
+            fpsSelector.disabled = false;
+            fpsSelector.style.opacity = '1';
             downloadControls.style.display = 'block';
             setStatus('Adjust start/end frames, reorder clips, then merge.');
         }
@@ -629,9 +616,9 @@
                         <input type="range" id="frameScrubber-${clip.id}" min="0" max="${clip.totalFrames - 1}" value="${clip.currentFrame}">
                         <div class="frame-actions">
                             <button class="secondary" data-action="set-start">Set Start</button>
-                            <input type="number" data-field="start" min="0" max="${clip.totalFrames - 1}" value="${clip.startFrame}">
+                            <input type="number" data-field="start" min="1" max="${clip.totalFrames}" value="${clip.startFrame + 1}">
                             <button class="secondary" data-action="set-end">Set End</button>
-                            <input type="number" data-field="end" min="0" max="${clip.totalFrames - 1}" value="${clip.endFrame}">
+                            <input type="number" data-field="end" min="1" max="${clip.totalFrames}" value="${clip.endFrame + 1}">
                         </div>
                     </div>
                 ` : '';
@@ -719,10 +706,10 @@
                         const value = parseInt(input.value, 10);
                         if (Number.isNaN(value)) return;
                         if (field === 'start') {
-                            clip.startFrame = Math.max(0, Math.min(value, clip.totalFrames - 1));
+                            clip.startFrame = Math.max(0, Math.min(value - 1, clip.totalFrames - 1));
                             if (clip.startFrame > clip.endFrame) clip.endFrame = clip.startFrame;
                         } else {
-                            clip.endFrame = Math.max(0, Math.min(value, clip.totalFrames - 1));
+                            clip.endFrame = Math.max(0, Math.min(value - 1, clip.totalFrames - 1));
                             if (clip.endFrame < clip.startFrame) clip.startFrame = clip.endFrame;
                         }
                         renderClips();
@@ -747,8 +734,8 @@
 
         async function loadClipFrames(clip) {
             if (clip.frames) return;
-            const fps = parseInt(fpsSelector.value, 10) || 16;
             const demuxed = clip.demuxed;
+            const fps = estimateFps(demuxed) || 30;
             if (!demuxed || !demuxed.samples.length) {
                 setStatus('Clip has no decodable samples.');
                 return;
@@ -759,7 +746,9 @@
             progressBar.style.width = '0%';
 
             try {
-                const result = await decodeFramesFromDemux(demuxed, fps, {
+                const result = await extractFramesWithMeta(clip.file, {
+                    captureAll: true,
+                    demuxed: demuxed,
                     onProgress: ({ decodedFrames, expectedFrames, sampleIndex, totalSamples }) => {
                         const progress = expectedFrames
                             ? Math.round((decodedFrames / expectedFrames) * 100)
@@ -772,6 +761,8 @@
                 });
 
                 clip.frames = result.frames;
+                if (result.inferredFps) clip.nativeFps = result.inferredFps;
+                if (result.bitrate) clip.bitrate = result.bitrate;
                 clip.currentFrame = 0;
                 clip.totalFrames = result.frames.length || clip.totalFrames;
                 clip.endFrame = Math.min(clip.endFrame, clip.totalFrames - 1);

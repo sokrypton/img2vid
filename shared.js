@@ -761,12 +761,13 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
         throw new Error('Clip has no decodable samples.');
     }
     const onProgress = options.onProgress;
+    const captureAll = options.captureAll === true;
     const targetIntervalUs = 1000000 / fps;
     const expectedFrames = demuxed.duration ? Math.max(1, Math.round(demuxed.duration * fps)) : 0;
     let outputWidth = demuxed.width || 0;
     let outputHeight = demuxed.height || 0;
 
-    async function decodePass(captureAll) {
+    async function decodePass(passCaptureAll) {
         let nextTargetUs = 0;
         const frames = [];
         const pending = [];
@@ -775,14 +776,14 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
         const decoder = new VideoDecoder({
             output: (frame) => {
                 const timestampUs = frame.timestamp;
-                if (captureAll || (timestampUs + targetIntervalUs / 2 >= nextTargetUs)) {
+                if (passCaptureAll || (timestampUs + targetIntervalUs / 2 >= nextTargetUs)) {
                     const promise = createImageBitmap(frame).then(bitmap => {
                         frames.push(bitmap);
                         outputWidth = outputWidth || frame.displayWidth || frame.codedWidth;
                         outputHeight = outputHeight || frame.displayHeight || frame.codedHeight;
                     }).finally(() => frame.close());
                     pending.push(promise);
-                    if (!captureAll) {
+                    if (!passCaptureAll) {
                         nextTargetUs += targetIntervalUs;
                     }
                 } else {
@@ -840,8 +841,8 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
         return frames;
     }
 
-    let frames = await decodePass(false);
-    if (frames && frames.length <= 1 && demuxed.samples.length > 1) {
+    let frames = await decodePass(captureAll);
+    if (!captureAll && frames && frames.length <= 1 && demuxed.samples.length > 1) {
         frames = await decodePass(true);
     }
     if (!frames || !frames.length) {
@@ -856,17 +857,20 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
     };
 }
 
-async function extractFramesWithWebCodecs(videoFile, fps, options = {}) {
+async function extractFramesWithMeta(videoFile, options = {}) {
     const demuxed = options.demuxed || await demuxVideoFile(videoFile);
-    const result = await decodeFramesFromDemux(demuxed, fps, options);
-    return { ...result, demuxed };
-}
-
-async function extractFrames(videoFile, fps, options = {}) {
-    if (typeof VideoDecoder === 'function') {
-        return extractFramesWithWebCodecs(videoFile, fps, options);
-    }
-    throw new Error('WebCodecs VideoDecoder is not available.');
+    const inferredFps = estimateFps(demuxed);
+    const duration = demuxed && demuxed.duration ? demuxed.duration : 0;
+    const bitrate = estimateBitrate(videoFile.size, duration);
+    const fpsForDecode = inferredFps || options.fallbackFps || 30;
+    const result = await decodeFramesFromDemux(demuxed, fpsForDecode, options);
+    return {
+        ...result,
+        demuxed,
+        inferredFps,
+        bitrate,
+        fpsForDecode
+    };
 }
 
 async function encodeFramesWithCanvas(options) {
