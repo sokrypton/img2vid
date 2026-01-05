@@ -575,6 +575,30 @@
                     <option value="gif">GIF</option>
                 </select>
             </div>
+            <div class="control-row">
+                <label for="sizeSelector">Size:</label>
+                <select id="sizeSelector">
+                    <option value="original" selected>original</option>
+                    <option value="w600">600xAUTO</option>
+                    <option value="w540">540xAUTO</option>
+                    <option value="w500">500xAUTO</option>
+                    <option value="w480">480xAUTO</option>
+                    <option value="w400">400xAUTO</option>
+                    <option value="w320">320xAUTO</option>
+                    <option value="h720">AUTOx720</option>
+                    <option value="h480">AUTOx480</option>
+                    <option value="h360">AUTOx360</option>
+                    <option value="h320">AUTOx320</option>
+                </select>
+                <label for="frameSkip" style="margin-left: 15px;">Subsample:</label>
+                <select id="frameSkip">
+                    <option value="1" selected>1x</option>
+                    <option value="2">0.5x</option>
+                    <option value="3">0.33x</option>
+                    <option value="4">0.25x</option>
+                    <option value="5">0.2x</option>
+                </select>
+            </div>
 
             <!-- Format-specific options -->
             <div id="webmOptions" class="control-row format-options">
@@ -630,6 +654,8 @@
         const clipList = document.getElementById('clipList');
         const fpsSelector = document.getElementById('fpsSelector');
         const formatSelector = document.getElementById('formatSelector');
+        const sizeSelector = document.getElementById('sizeSelector');
+        const frameSkip = document.getElementById('frameSkip');
         const webmOptions = document.getElementById('webmOptions');
         const gifOptions = document.getElementById('gifOptions');
         const webmBitrate = document.getElementById('webmBitrate');
@@ -657,8 +683,40 @@
 
         // Update estimate when settings change
         fpsSelector.addEventListener('change', updateSizeEstimate);
+        sizeSelector.addEventListener('change', updateSizeEstimate);
+        frameSkip.addEventListener('change', updateSizeEstimate);
         webmBitrate.addEventListener('change', updateSizeEstimate);
         gifQuality.addEventListener('input', updateSizeEstimate);
+
+        function calculateOutputSize(inputWidth, inputHeight) {
+            const sizeOption = sizeSelector.value;
+            let outputWidth = inputWidth;
+            let outputHeight = inputHeight;
+
+            if (sizeOption === 'original') {
+                // No scaling - keep original dimensions
+                outputWidth = inputWidth;
+                outputHeight = inputHeight;
+            } else if (sizeOption.startsWith('w')) {
+                // WIDTHxAUTO (e.g., w600, w480)
+                const targetWidth = parseInt(sizeOption.substring(1));
+                const scale = targetWidth / inputWidth;
+                outputWidth = targetWidth;
+                outputHeight = Math.round(inputHeight * scale);
+            } else if (sizeOption.startsWith('h')) {
+                // AUTOxHEIGHT (e.g., h720, h480)
+                const targetHeight = parseInt(sizeOption.substring(1));
+                const scale = targetHeight / inputHeight;
+                outputWidth = Math.round(inputWidth * scale);
+                outputHeight = targetHeight;
+            }
+
+            // Ensure even dimensions (required for video encoding)
+            if (outputWidth % 2 !== 0) outputWidth -= 1;
+            if (outputHeight % 2 !== 0) outputHeight -= 1;
+
+            return { width: outputWidth, height: outputHeight };
+        }
 
         function updateSizeEstimate() {
             const merged = getMergedSegments();
@@ -669,32 +727,38 @@
 
             const fps = parseInt(fpsSelector.value, 10) || 16;
             const format = formatSelector.value;
-            const frameCount = merged.totalFrames;
+            const skip = parseInt(frameSkip.value, 10) || 1;
+            const frameCount = Math.ceil(merged.totalFrames / skip);
             const duration = frameCount / fps;
             const { outputWidth, outputHeight } = getOutputDimensions();
 
             // Use crop dimensions if available, otherwise use full output dimensions
-            let width, height;
+            let croppedWidth, croppedHeight;
             if (cropRect && cropRect.w > 0 && cropRect.h > 0) {
                 // Clamp and ensure even dimensions (required for video encoding)
                 let cropRectSafe = clampCropRect(cropRect, outputWidth, outputHeight);
                 if (cropRectSafe.w % 2 !== 0) cropRectSafe.w -= 1;
                 if (cropRectSafe.h % 2 !== 0) cropRectSafe.h -= 1;
-                width = cropRectSafe.w;
-                height = cropRectSafe.h;
+                croppedWidth = cropRectSafe.w;
+                croppedHeight = cropRectSafe.h;
             } else {
-                width = outputWidth;
-                height = outputHeight;
+                croppedWidth = outputWidth;
+                croppedHeight = outputHeight;
             }
 
+            // Apply size scaling
+            const { width, height } = calculateOutputSize(croppedWidth, croppedHeight);
+
             let estimatedBytes, details;
+
+            const skipInfo = skip > 1 ? ` (1/${skip} frames)` : '';
 
             if (format === 'webm') {
                 const bitrate = parseInt(webmBitrate.value, 10) || 6000000;
                 // WebM estimate: bitrate * duration (in bits) / 8 (to bytes)
                 estimatedBytes = (bitrate * duration) / 8;
                 const mbps = (bitrate / 1000000).toFixed(1);
-                details = `${frameCount} frames at ${fps} fps, ${width}×${height}px, ${mbps} Mbps bitrate = ${duration.toFixed(1)}s`;
+                details = `${frameCount} frames${skipInfo} at ${fps} fps, ${width}×${height}px, ${mbps} Mbps = ${duration.toFixed(1)}s`;
             } else if (format === 'gif') {
                 // GIF estimate: rough approximation
                 // GIF uses LZW compression which is very effective (typically 5-15% of raw indexed color)
@@ -705,7 +769,7 @@
                 const compressionRatio = 0.08 + (quality / 1000); // 8-11% range
                 const bytesPerPixel = 1; // GIF is 8-bit indexed color
                 estimatedBytes = width * height * frameCount * bytesPerPixel * compressionRatio;
-                details = `${frameCount} frames, ${width}×${height}px, quality ${quality} (rough estimate)`;
+                details = `${frameCount} frames${skipInfo}, ${width}×${height}px, quality ${quality} (rough estimate)`;
             }
 
             // Format file size
@@ -1663,6 +1727,7 @@
             }
             const fps = parseInt(fpsSelector.value, 10) || 16;
             const format = formatSelector.value;
+            const skip = parseInt(frameSkip.value, 10) || 1;
 
             // Get format-specific options
             let bitrate, quality, dither;
@@ -1720,12 +1785,20 @@
                 baseCanvas.height = outputHeight;
                 const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
 
+                // Calculate final output dimensions after size scaling
+                const { width: finalWidth, height: finalHeight } = calculateOutputSize(cropRectSafe.w, cropRectSafe.h);
+
+                // Calculate frame count with skipping
+                const outputFrameCount = Math.ceil(totalFrames / skip);
+
                 const encodeOptions = {
-                    width: cropRectSafe.w,
-                    height: cropRectSafe.h,
+                    width: finalWidth,
+                    height: finalHeight,
                     fps: fps,
-                    frameCount: totalFrames,
-                    getFrame: (globalIndex) => {
+                    frameCount: outputFrameCount,
+                    getFrame: (outputIndex) => {
+                        // Map output frame index to input frame index (with skipping)
+                        const globalIndex = outputIndex * skip;
                         const segment = segments.find(seg => globalIndex >= seg.start && globalIndex <= seg.end);
                         if (!segment) return null;
                         const localIndex = segment.clip.startFrame + (globalIndex - segment.start);
@@ -1733,6 +1806,7 @@
                     },
                     drawFrame: (ctx, frame) => {
                         drawFrameToCanvas(baseCtx, frame, outputWidth, outputHeight);
+                        // Draw cropped region and scale to final size
                         ctx.drawImage(
                             baseCanvas,
                             cropRectSafe.x,
@@ -1741,14 +1815,20 @@
                             cropRectSafe.h,
                             0,
                             0,
-                            cropRectSafe.w,
-                            cropRectSafe.h
+                            finalWidth,
+                            finalHeight
                         );
                     },
-                    onProgress: ({ encodedFrames, totalFrames }) => {
+                    onProgress: ({ encodedFrames, totalFrames, phase }) => {
                         const progress = Math.round((encodedFrames / totalFrames) * 100);
                         progressBar.style.width = progress + '%';
-                        loading.textContent = `Encoding frames: ${encodedFrames}/${totalFrames} (${progress}%)`;
+
+                        // Show different message based on encoding phase (GIF has 2 phases)
+                        if (phase === 'preparing') {
+                            loading.textContent = `Preparing frames: ${encodedFrames}/${totalFrames} (${progress}%)`;
+                        } else {
+                            loading.textContent = `Encoding ${format.toUpperCase()}: ${encodedFrames}/${totalFrames} (${progress}%)`;
+                        }
                     }
                 };
 
@@ -1776,9 +1856,9 @@
 
                 // Update estimate with actual size
                 estimatedSize.innerHTML = `<span style="color:#28a745;">${actualSize}</span> <span style="font-size:11px;color:#666;">(actual)</span>`;
-                sizeDetails.textContent = `Successfully encoded ${totalFrames} frames as ${format.toUpperCase()}`;
+                sizeDetails.textContent = `Successfully encoded ${outputFrameCount} frames as ${format.toUpperCase()} at ${finalWidth}×${finalHeight}px`;
 
-                setStatus(`Exported ${clips.length} clip${clips.length > 1 ? 's' : ''} into ${totalFrames} frames. File size: ${actualSize}`);
+                setStatus(`Exported ${clips.length} clip${clips.length > 1 ? 's' : ''} into ${outputFrameCount} frames (${finalWidth}×${finalHeight}px). File size: ${actualSize}`);
             } catch (error) {
                 console.error('Merge failed', error);
                 setStatus('Merge failed: ' + (error.message || 'Unknown error'));

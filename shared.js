@@ -1407,7 +1407,7 @@ async function encodeGif(options) {
     const delay = Math.round(1000 / fps); // ms per frame
     const { canvas, ctx } = createEncodingCanvas(width, height);
 
-    // Add all frames to GIF
+    // Add all frames to GIF (with progress updates)
     for (let i = 0; i < frameCount; i++) {
         const frame = getFrame(i);
         if (!frame) {
@@ -1426,6 +1426,16 @@ async function encodeGif(options) {
             delay: delay,
             copy: true // Copy canvas data (important!)
         });
+
+        // Report progress during frame preparation
+        if (onProgress && i % 5 === 0) {
+            onProgress({
+                encodedFrames: i + 1,
+                totalFrames: frameCount,
+                progress: (i + 1) / frameCount,
+                phase: 'preparing'
+            });
+        }
 
         // Yield to event loop
         if (i % 10 === 0) {
