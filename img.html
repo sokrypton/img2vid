@@ -19,6 +19,13 @@ No setup, no internet, no dependencies needed!
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Editor</title>
     
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+    <script>
+        if (typeof eruda !== 'undefined') {
+            eruda.init();
+        }
+    </script>
+
     <script src="shared.js"></script>
     
     <!-- No external dependencies needed! All browser-native -->

@@ -286,9 +286,11 @@ function parseMp4(buffer) {
             const offset = chunkOffsets[chunkIndex - 1] + offsetInChunk;
             const ctsOffset = compositionOffsets ? (compositionOffsets[sampleIndex] || 0) : 0;
             const timestampUs = Math.round(((dts + ctsOffset) / timescale) * 1000000);
+            const durationUs = Math.round(((sampleDeltas[sampleIndex] || 0) / timescale) * 1000000);
             const key = syncSamples ? syncSamples.has(sampleIndex + 1) : true;
             samples.push({
                 timestampUs,
+                durationUs,
                 data: new Uint8Array(buffer, offset, size),
                 type: key ? 'key' : 'delta'
             });
@@ -792,6 +794,7 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
     async function decodePass(passCaptureAll) {
         let nextTargetUs = 0;
         const frames = [];
+        const outputTimestamps = [];
         const pending = [];
         let chain = Promise.resolve();
         let outputIndex = 0;
@@ -802,6 +805,7 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
                 const timestampUs = frame.timestamp;
                 if (passCaptureAll || (timestampUs + targetIntervalUs / 2 >= nextTargetUs)) {
                     const slot = outputIndex++;
+                    outputTimestamps.push(timestampUs);
                     const promise = chain = chain.then(() => (
                         createImageBitmap(frame).then(bitmap => {
                             frames.push({ index: slot, bitmap });
@@ -851,11 +855,15 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
                 timestamp = lastTimestamp + 1;
             }
             lastTimestamp = timestamp;
-            decoder.decode(new EncodedVideoChunk({
+            const chunkInit = {
                 type: sample.type,
                 timestamp: timestamp,
                 data: sample.data
-            }));
+            };
+            if (sample.durationUs && Number.isFinite(sample.durationUs) && sample.durationUs > 0) {
+                chunkInit.duration = Math.round(sample.durationUs);
+            }
+            decoder.decode(new EncodedVideoChunk(chunkInit));
             if (decoderError) {
                 throw new Error('Decoder error: ' + (decoderError.message || decoderError.name || 'Unknown'));
             }
@@ -874,18 +882,47 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
         await Promise.all(pending);
         decoder.close();
         frames.sort((a, b) => a.index - b.index);
-        return frames.map(entry => entry.bitmap);
+        return {
+            frames: frames.map(entry => entry.bitmap),
+            outputTimestamps
+        };
     }
 
-    let frames = await decodePass(captureAll);
-    if (!captureAll && frames && frames.length <= 1 && demuxed.samples.length > 1) {
-        frames = await decodePass(true);
+    let decodeResult = await decodePass(captureAll);
+    if (!captureAll && decodeResult && decodeResult.frames.length <= 1 && demuxed.samples.length > 1) {
+        decodeResult = await decodePass(true);
     }
-    if (!frames || !frames.length) {
+    if (!decodeResult.frames || !decodeResult.frames.length) {
         throw new Error('No frames decoded.');
     }
+    if (captureAll && demuxed.samples && demuxed.samples.length) {
+        const sampleCount = demuxed.samples.length;
+        const frameCount = decodeResult.frames.length;
+        if (frameCount !== sampleCount) {
+            const sampleTimestamps = demuxed.samples.map(sample => Math.round(Number(sample.timestampUs)));
+            const outputTimestamps = decodeResult.outputTimestamps || [];
+            const sampleUnique = new Set(sampleTimestamps).size;
+            const outputUnique = new Set(outputTimestamps).size;
+            const sampleDuplicates = sampleCount - sampleUnique;
+            const outputDuplicates = outputTimestamps.length - outputUnique;
+            const sampleHead = sampleTimestamps.slice(0, 5);
+            const sampleTail = sampleTimestamps.slice(-5);
+            const outputHead = outputTimestamps.slice(0, 5);
+            const outputTail = outputTimestamps.slice(-5);
+            console.warn('[Decode] Frame count mismatch', {
+                samples: sampleCount,
+                decoded: frameCount,
+                sampleDuplicates,
+                outputDuplicates,
+                sampleHead,
+                sampleTail,
+                outputHead,
+                outputTail
+            });
+        }
+    }
     return {
-        frames,
+        frames: decodeResult.frames,
         expectedFrames,
         width: outputWidth || demuxed.width,
         height: outputHeight || demuxed.height,
