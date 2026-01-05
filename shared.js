@@ -990,6 +990,8 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
     const onProgress = options.onProgress;
     let decodedCount = 0;
     let skippedCount = 0;
+    let lastTimestamp = -1;
+    let duplicateTimestampCount = 0;
 
     // 4. Create VideoDecoder with output handler
     return new Promise((resolve, reject) => {
@@ -997,6 +999,13 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
             output: async (videoFrame) => {
                 try {
                     let shouldCapture = true;
+
+                    // Detect duplicate timestamps (indicates decoder is outputting duplicate frames)
+                    if (videoFrame.timestamp === lastTimestamp) {
+                        console.warn(`⚠️ Duplicate timestamp detected: ${videoFrame.timestamp}µs - frame ${decodedCount}`);
+                        duplicateTimestampCount++;
+                    }
+                    lastTimestamp = videoFrame.timestamp;
 
                     // Optional hash-based deduplication
                     if (skipDuplicates) {
@@ -1089,6 +1098,21 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
 
                 decoder.decode(chunk);
                 processedSamples++;
+
+                // Backpressure: wait if decode queue is getting too large (mobile Safari/Chrome fix)
+                // This prevents frames from being dropped on memory-constrained devices
+                if (decoder.decodeQueueSize > 10) {
+                    await new Promise(resolve => {
+                        const checkQueue = () => {
+                            if (decoder.decodeQueueSize <= 5) {
+                                resolve();
+                            } else {
+                                setTimeout(checkQueue, 10);
+                            }
+                        };
+                        checkQueue();
+                    });
+                }
             }
 
             // 7. Flush decoder and wait for all frames
@@ -1109,6 +1133,11 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
                     console.log(`📊 WebCodecs summary: ${totalSamples} samples → ${frames.length} unique frames (${skippedCount} duplicates removed)`);
                 } else {
                     console.log(`📊 WebCodecs summary: ${totalSamples} samples → ${frames.length} frames (deduplication disabled for VFR accuracy)`);
+                }
+
+                if (duplicateTimestampCount > 0) {
+                    console.error(`❌ FRAME LOSS DETECTED: ${duplicateTimestampCount} duplicate timestamps found!`);
+                    console.error(`This indicates the decoder dropped frames on this device. Consider using playback method on mobile.`);
                 }
 
                 resolve({
