@@ -696,11 +696,13 @@
                 const mbps = (bitrate / 1000000).toFixed(1);
                 details = `${frameCount} frames at ${fps} fps, ${width}×${height}px, ${mbps} Mbps bitrate = ${duration.toFixed(1)}s`;
             } else if (format === 'gif') {
-                // GIF estimate: very rough approximation
-                // GIF uses LZW compression, hard to estimate accurately
-                // Rough formula: width * height * frames * bytes_per_pixel * compression_ratio
+                // GIF estimate: rough approximation
+                // GIF uses LZW compression which is very effective (typically 5-15% of raw indexed color)
+                // Quality affects encoding speed more than file size
                 const quality = parseInt(gifQuality.value, 10) || 10;
-                const compressionRatio = 0.3 + (quality / 100); // Lower quality = better compression
+                // Base compression ~10%, quality affects it slightly
+                // Lower quality (1) = better compression, higher quality (30) = slightly worse compression
+                const compressionRatio = 0.08 + (quality / 1000); // 8-11% range
                 const bytesPerPixel = 1; // GIF is 8-bit indexed color
                 estimatedBytes = width * height * frameCount * bytesPerPixel * compressionRatio;
                 details = `${frameCount} frames, ${width}×${height}px, quality ${quality} (rough estimate)`;
