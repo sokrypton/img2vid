@@ -622,6 +622,9 @@
 
         let clips = [];
 
+        // Will be initialized after helper functions are defined
+        let previewPlayback;
+
         function setStatus(message) {
             info.textContent = message;
         }
@@ -1279,8 +1282,16 @@
             updateCropOverlay();
         }
 
-        const previewPlayback = createFramePlayback({
-            getTotalFrames: () => getMergedSegments().totalFrames,
+        // Initialize preview playback controller after helper functions are defined
+        if (typeof createFramePlayback === 'undefined') {
+            console.error('createFramePlayback is not defined! shared.js may not have loaded.');
+            console.error('Check browser console for syntax errors in shared.js');
+        }
+        previewPlayback = createFramePlayback({
+            getTotalFrames: () => {
+                const merged = getMergedSegments();
+                return merged ? merged.totalFrames : 0;
+            },
             getCurrentFrame: () => parseInt(globalPreviewScrubber.value, 10) || 0,
             drawFrame: (index) => drawMergedFrame(index),
             getFps: () => parseInt(fpsSelector.value, 10) || 16,

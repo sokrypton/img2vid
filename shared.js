@@ -994,7 +994,7 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
     let duplicateTimestampCount = 0;
 
     // 4. Create VideoDecoder with output handler
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         const decoder = new VideoDecoder({
             output: async (videoFrame) => {
                 try {
