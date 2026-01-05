@@ -569,8 +569,17 @@
                     <option value="24">24</option>
                     <option value="30">30</option>
                 </select>
-                <label for="bitrateSelector">Bitrate:</label>
-                <select id="bitrateSelector">
+                <label for="formatSelector">Format:</label>
+                <select id="formatSelector">
+                    <option value="webm">WebM (VP9)</option>
+                    <option value="gif">GIF</option>
+                </select>
+            </div>
+
+            <!-- Format-specific options -->
+            <div id="webmOptions" class="control-row format-options">
+                <label for="webmBitrate">Bitrate (Mbps):</label>
+                <select id="webmBitrate">
                     <option value="2000000">2</option>
                     <option value="4000000">4</option>
                     <option value="6000000" selected>6</option>
@@ -578,6 +587,31 @@
                     <option value="12000000">12</option>
                 </select>
             </div>
+
+            <div id="gifOptions" class="control-row format-options" style="display:none;">
+                <label for="gifQuality">Quality (1-30):</label>
+                <input type="number" id="gifQuality" min="1" max="30" value="10"
+                       style="width: 60px;" title="Lower = better quality but slower">
+                <label for="gifDither" style="margin-left: 10px;">Dither:</label>
+                <select id="gifDither">
+                    <option value="false">None</option>
+                    <option value="FloydSteinberg">Floyd-Steinberg</option>
+                    <option value="FalseFloydSteinberg">False Floyd-Steinberg</option>
+                    <option value="Stucki">Stucki</option>
+                    <option value="Atkinson">Atkinson</option>
+                </select>
+            </div>
+
+            <!-- File Size Estimate -->
+            <div id="sizeEstimate" style="display:none; margin: 10px 0; padding: 10px; background: #e8f4f8; border-left: 4px solid #0066cc; border-radius: 4px;">
+                <div style="font-size: 13px; color: #333; margin-bottom: 4px;">
+                    <strong>Estimated file size:</strong> <span id="estimatedSize">-</span>
+                </div>
+                <div style="font-size: 11px; color: #666;">
+                    <span id="sizeDetails">-</span>
+                </div>
+            </div>
+
             <div class="control-row">
                 <button class="primary" id="mergeBtnBottom">Download</button>
                 <button class="secondary" id="clearBtnBottom">Clear</button>
@@ -589,13 +623,103 @@
     </div>
 
     <script src="shared.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
     <script>
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
         const clipList = document.getElementById('clipList');
         const fpsSelector = document.getElementById('fpsSelector');
-        const bitrateSelector = document.getElementById('bitrateSelector');
+        const formatSelector = document.getElementById('formatSelector');
+        const webmOptions = document.getElementById('webmOptions');
+        const gifOptions = document.getElementById('gifOptions');
+        const webmBitrate = document.getElementById('webmBitrate');
+        const gifQuality = document.getElementById('gifQuality');
+        const gifDither = document.getElementById('gifDither');
         const mergeBtnBottom = document.getElementById('mergeBtnBottom');
+        const sizeEstimate = document.getElementById('sizeEstimate');
+        const estimatedSize = document.getElementById('estimatedSize');
+        const sizeDetails = document.getElementById('sizeDetails');
+
+        // Format selector change handler
+        formatSelector.addEventListener('change', () => {
+            const format = formatSelector.value;
+            // Hide all format options
+            document.querySelectorAll('.format-options').forEach(el => el.style.display = 'none');
+            // Show selected format options
+            if (format === 'webm') {
+                webmOptions.style.display = 'flex';
+            } else if (format === 'gif') {
+                gifOptions.style.display = 'flex';
+            }
+            // Update size estimate
+            updateSizeEstimate();
+        });
+
+        // Update estimate when settings change
+        fpsSelector.addEventListener('change', updateSizeEstimate);
+        webmBitrate.addEventListener('change', updateSizeEstimate);
+        gifQuality.addEventListener('input', updateSizeEstimate);
+
+        function updateSizeEstimate() {
+            const merged = getMergedSegments();
+            if (!merged || !merged.totalFrames) {
+                sizeEstimate.style.display = 'none';
+                return;
+            }
+
+            const fps = parseInt(fpsSelector.value, 10) || 16;
+            const format = formatSelector.value;
+            const frameCount = merged.totalFrames;
+            const duration = frameCount / fps;
+            const { outputWidth, outputHeight } = getOutputDimensions();
+
+            // Use crop dimensions if available, otherwise use full output dimensions
+            let width, height;
+            if (cropRect && cropRect.w > 0 && cropRect.h > 0) {
+                // Clamp and ensure even dimensions (required for video encoding)
+                let cropRectSafe = clampCropRect(cropRect, outputWidth, outputHeight);
+                if (cropRectSafe.w % 2 !== 0) cropRectSafe.w -= 1;
+                if (cropRectSafe.h % 2 !== 0) cropRectSafe.h -= 1;
+                width = cropRectSafe.w;
+                height = cropRectSafe.h;
+            } else {
+                width = outputWidth;
+                height = outputHeight;
+            }
+
+            let estimatedBytes, details;
+
+            if (format === 'webm') {
+                const bitrate = parseInt(webmBitrate.value, 10) || 6000000;
+                // WebM estimate: bitrate * duration (in bits) / 8 (to bytes)
+                estimatedBytes = (bitrate * duration) / 8;
+                const mbps = (bitrate / 1000000).toFixed(1);
+                details = `${frameCount} frames at ${fps} fps, ${width}×${height}px, ${mbps} Mbps bitrate = ${duration.toFixed(1)}s`;
+            } else if (format === 'gif') {
+                // GIF estimate: very rough approximation
+                // GIF uses LZW compression, hard to estimate accurately
+                // Rough formula: width * height * frames * bytes_per_pixel * compression_ratio
+                const quality = parseInt(gifQuality.value, 10) || 10;
+                const compressionRatio = 0.3 + (quality / 100); // Lower quality = better compression
+                const bytesPerPixel = 1; // GIF is 8-bit indexed color
+                estimatedBytes = width * height * frameCount * bytesPerPixel * compressionRatio;
+                details = `${frameCount} frames, ${width}×${height}px, quality ${quality} (rough estimate)`;
+            }
+
+            // Format file size
+            const mb = estimatedBytes / (1024 * 1024);
+            const kb = estimatedBytes / 1024;
+            let sizeStr;
+            if (mb >= 1) {
+                sizeStr = mb.toFixed(2) + ' MB';
+            } else {
+                sizeStr = kb.toFixed(0) + ' KB';
+            }
+
+            estimatedSize.textContent = sizeStr;
+            sizeDetails.textContent = details;
+            sizeEstimate.style.display = 'block';
+        }
         const clearBtnBottom = document.getElementById('clearBtnBottom');
         const downloadControls = document.getElementById('downloadControls');
         const info = document.getElementById('info');
@@ -974,6 +1098,7 @@
             });
             refreshGlobalPreview();
             syncCropToOutput();
+            updateSizeEstimate(); // Update file size estimate when clips change
         }
 
         async function loadClipFrames(clip) {
@@ -1360,6 +1485,7 @@
                 cropBottomInput.value = Math.max(0, Math.round(maxH - (cropRect.y + cropRect.h)));
                 cropRightInput.value = Math.max(0, Math.round(maxW - (cropRect.x + cropRect.w)));
             }
+            updateSizeEstimate(); // Update estimate when crop changes
         }
 
         function hideCropOverlay() {
@@ -1534,7 +1660,16 @@
                 return;
             }
             const fps = parseInt(fpsSelector.value, 10) || 16;
-            const bitrate = parseInt(bitrateSelector.value, 10) || 6000000;
+            const format = formatSelector.value;
+
+            // Get format-specific options
+            let bitrate, quality, dither;
+            if (format === 'webm') {
+                bitrate = parseInt(webmBitrate.value, 10) || 6000000;
+            } else if (format === 'gif') {
+                quality = parseInt(gifQuality.value, 10) || 10;
+                dither = gifDither.value === 'false' ? false : gifDither.value;
+            }
 
             const { outputWidth, outputHeight } = getOutputDimensions();
             for (const clip of clips) {
@@ -1583,11 +1718,10 @@
                 baseCanvas.height = outputHeight;
                 const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
 
-                const blob = await encodeFramesWithCanvas({
+                const encodeOptions = {
                     width: cropRectSafe.w,
                     height: cropRectSafe.h,
                     fps: fps,
-                    bitrate: bitrate,
                     frameCount: totalFrames,
                     getFrame: (globalIndex) => {
                         const segment = segments.find(seg => globalIndex >= seg.start && globalIndex <= seg.end);
@@ -1614,14 +1748,35 @@
                         progressBar.style.width = progress + '%';
                         loading.textContent = `Encoding frames: ${encodedFrames}/${totalFrames} (${progress}%)`;
                     }
-                });
+                };
+
+                let blob, filename;
+                if (format === 'webm') {
+                    encodeOptions.bitrate = bitrate;
+                    blob = await encodeFramesWithCanvas(encodeOptions);
+                    filename = 'merged.webm';
+                } else if (format === 'gif') {
+                    encodeOptions.gifQuality = quality;
+                    encodeOptions.gifDither = dither;
+                    blob = await encodeGif(encodeOptions);
+                    filename = 'merged.gif';
+                }
 
                 const url = URL.createObjectURL(blob);
                 downloadLink.href = url;
-                downloadLink.download = 'merged.webm';
+                downloadLink.download = filename;
                 downloadLink.click();
 
-                setStatus(`Exported ${clips.length} clip${clips.length > 1 ? 's' : ''} into ${totalFrames} frames.`);
+                // Show actual file size
+                const actualMB = (blob.size / (1024 * 1024)).toFixed(2);
+                const actualKB = (blob.size / 1024).toFixed(0);
+                const actualSize = blob.size >= 1024 * 1024 ? `${actualMB} MB` : `${actualKB} KB`;
+
+                // Update estimate with actual size
+                estimatedSize.innerHTML = `<span style="color:#28a745;">${actualSize}</span> <span style="font-size:11px;color:#666;">(actual)</span>`;
+                sizeDetails.textContent = `Successfully encoded ${totalFrames} frames as ${format.toUpperCase()}`;
+
+                setStatus(`Exported ${clips.length} clip${clips.length > 1 ? 's' : ''} into ${totalFrames} frames. File size: ${actualSize}`);
             } catch (error) {
                 console.error('Merge failed', error);
                 setStatus('Merge failed: ' + (error.message || 'Unknown error'));

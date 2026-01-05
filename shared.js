@@ -1365,6 +1365,82 @@ async function encodeFramesWithCanvas(options) {
     return muxer.getBlob();
 }
 
+async function encodeGif(options) {
+    if (typeof GIF === 'undefined') {
+        throw new Error('GIF library not loaded. Include gif.js before using this function.');
+    }
+
+    const width = options.width;
+    const height = options.height;
+    const fps = options.fps;
+    const frameCount = options.frameCount;
+    const getFrame = options.getFrame;
+    const drawFrame = options.drawFrame;
+    const onProgress = options.onProgress;
+
+    // GIF-specific options with defaults
+    const quality = options.gifQuality !== undefined ? options.gifQuality : 10; // 1-30, lower = better
+    const dither = options.gifDither || false; // Dithering method or false
+    const transparent = options.gifTransparent || null; // Transparent color hex or null
+
+    const gif = new GIF({
+        workers: 2,
+        quality: quality,
+        width: width,
+        height: height,
+        dither: dither,
+        transparent: transparent,
+        workerScript: 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js'
+    });
+
+    // Track encoding progress
+    gif.on('progress', (p) => {
+        if (onProgress) {
+            onProgress({
+                encodedFrames: Math.floor(p * frameCount),
+                totalFrames: frameCount,
+                progress: p
+            });
+        }
+    });
+
+    const delay = Math.round(1000 / fps); // ms per frame
+    const { canvas, ctx } = createEncodingCanvas(width, height);
+
+    // Add all frames to GIF
+    for (let i = 0; i < frameCount; i++) {
+        const frame = getFrame(i);
+        if (!frame) {
+            throw new Error('Frame not available at index ' + i);
+        }
+
+        // Draw frame to canvas
+        if (drawFrame) {
+            drawFrame(ctx, frame, i);
+        } else {
+            ctx.drawImage(frame, 0, 0, width, height);
+        }
+
+        // Add canvas to GIF
+        gif.addFrame(canvas, {
+            delay: delay,
+            copy: true // Copy canvas data (important!)
+        });
+
+        // Yield to event loop
+        if (i % 10 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+    }
+
+    // Render GIF and return blob
+    return new Promise((resolve, reject) => {
+        gif.on('finished', (blob) => resolve(blob));
+        gif.on('error', (error) => reject(error));
+        gif.render();
+    });
+}
+
 function createFramePlayback(options) {
     const getTotalFrames = options.getTotalFrames;
     const getCurrentFrame = options.getCurrentFrame;

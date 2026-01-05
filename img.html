@@ -27,7 +27,8 @@ No setup, no internet, no dependencies needed!
     </script>
 
     <script src="shared.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+
     <!-- No external dependencies needed! All browser-native -->
     <style>
         * {
@@ -437,6 +438,25 @@ No setup, no internet, no dependencies needed!
             <div style="font-size: 11px; color: #666; margin-top: 5px;" id="mathHelper"></div>
         </div>
 
+        <div id="formatSettings" style="display:none; margin-bottom:15px; padding:12px; background:#f8f9fa; border-radius:4px;">
+            <label for="imageFormatSelector" style="margin-right:8px; font-weight:bold;">Download Format:</label>
+            <select id="imageFormatSelector" style="padding:5px; font-size:14px;">
+                <option value="png">PNG (lossless)</option>
+                <option value="jpg">JPEG</option>
+                <option value="webp">WebP</option>
+            </select>
+            <span id="jpgQualitySettings" style="display:none; margin-left:15px;">
+                <label for="jpgQuality" style="margin-right:5px;">Quality:</label>
+                <input type="number" id="jpgQuality" min="1" max="100" value="90" style="width:60px; padding:4px;">
+                <span style="font-size:12px; color:#666;">%</span>
+            </span>
+            <span id="webpQualitySettings" style="display:none; margin-left:15px;">
+                <label for="webpQuality" style="margin-right:5px;">Quality:</label>
+                <input type="number" id="webpQuality" min="1" max="100" value="90" style="width:60px; padding:4px;">
+                <span style="font-size:12px; color:#666;">%</span>
+            </span>
+        </div>
+
             <div class="buttons" id="imageButtons" style="display:none;">
                 <button class="primary" id="extendBtn">Extend</button>
                 <button class="primary" id="replaceBtn">Replace</button>
@@ -508,7 +528,26 @@ No setup, no internet, no dependencies needed!
         const totalFramesDisplay = document.getElementById('totalFramesDisplay');
         const imageSettings = document.getElementById('imageSettings');
         const logoHeightSettings = document.getElementById('logoHeightSettings');
-        
+
+        // Format selector elements
+        const formatSettings = document.getElementById('formatSettings');
+        const imageFormatSelector = document.getElementById('imageFormatSelector');
+        const jpgQualitySettings = document.getElementById('jpgQualitySettings');
+        const webpQualitySettings = document.getElementById('webpQualitySettings');
+        const jpgQuality = document.getElementById('jpgQuality');
+        const webpQuality = document.getElementById('webpQuality');
+
+        // Format selector change handler
+        imageFormatSelector.addEventListener('change', () => {
+            const format = imageFormatSelector.value;
+            jpgQualitySettings.style.display = format === 'jpg' ? 'inline' : 'none';
+            webpQualitySettings.style.display = format === 'webp' ? 'inline' : 'none';
+            // Update current image's download link if one exists
+            if (currentImage) {
+                showImage(currentImage);
+            }
+        });
+
         // Reference modal elements
         const referenceModal = document.getElementById('referenceModal');
         const referenceFilesInput = document.getElementById('referenceFilesInput');
@@ -665,6 +704,7 @@ No setup, no internet, no dependencies needed!
                     showImage(img);
                     imageSettings.style.display = '';
                     logoHeightSettings.style.display = '';
+                    formatSettings.style.display = 'block';
                     imageButtons.style.display = 'flex';
                     videoButtons.style.display = 'none';
                     videoControls.style.display = 'none'; // Hide video player controls
@@ -691,6 +731,7 @@ No setup, no internet, no dependencies needed!
             
             // Hide video player, show canvas viewer
             resultImage.style.display = 'none';
+            formatSettings.style.display = 'none';
             imageButtons.style.display = 'none';
             videoButtons.style.display = 'none';
             videoControls.style.display = 'none';
@@ -940,10 +981,10 @@ No setup, no internet, no dependencies needed!
         });
 
         function showImage(img) {
-            const dataURL = imageToDataURL(img);
+            const { dataURL, extension } = imageToDataURL(img);
             resultImage.src = dataURL;
             downloadLink.href = dataURL;
-            downloadLink.download = 'modified-image.png';
+            downloadLink.download = `modified-image.${extension}`;
             info.textContent = `${img.width} × ${img.height} px`;
             updateMathHelper();
         }
@@ -954,7 +995,26 @@ No setup, no internet, no dependencies needed!
             canvas.height = img.height;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0);
-            return canvas.toDataURL('image/png');
+
+            const format = imageFormatSelector.value;
+            let mimeType, extension, quality;
+
+            if (format === 'jpg') {
+                mimeType = 'image/jpeg';
+                extension = 'jpg';
+                quality = (parseInt(jpgQuality.value, 10) || 90) / 100;
+            } else if (format === 'webp') {
+                mimeType = 'image/webp';
+                extension = 'webp';
+                quality = (parseInt(webpQuality.value, 10) || 90) / 100;
+            } else {
+                mimeType = 'image/png';
+                extension = 'png';
+                quality = undefined; // PNG is lossless
+            }
+
+            const dataURL = canvas.toDataURL(mimeType, quality);
+            return { dataURL, extension };
         }
 
         // IMAGE OPERATIONS
@@ -1135,6 +1195,7 @@ No setup, no internet, no dependencies needed!
                 frameViewer.canvas.style.display = 'none';
                 resultImage.style.display = 'block';
                 videoButtons.style.display = 'none';
+                formatSettings.style.display = 'block';
                 imageButtons.style.display = 'flex';
                 videoControls.style.display = 'none';
                 imageSettings.style.display = '';
@@ -1323,6 +1384,7 @@ No setup, no internet, no dependencies needed!
             // Reset UI
             resultImage.src = '';
             downloadLink.href = '';
+            formatSettings.style.display = 'none';
             imageButtons.style.display = 'none';
             videoButtons.style.display = 'none';
             videoControls.style.display = 'none'; // Hide video player controls
