@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mediabunny Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; max-width: 800px; margin: 0 auto; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
+        .result { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        input[type="file"] { margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Mediabunny Exploration</h1>
+    <p>Testing Mediabunny (410 KB) vs current approach (31 KB)</p>
+
+    <div class="section">
+        <h2>📦 Size Comparison</h2>
+        <div id="sizeComparison" class="info">Loading...</div>
+    </div>
+
+    <div class="section">
+        <h2>🎬 Test MP4 Demuxing (Frame Extraction)</h2>
+        <input type="file" id="videoFile" accept="video/mp4,video/webm">
+        <button onclick="testDemux()">Extract Frames with Mediabunny</button>
+        <div id="demuxResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>📝 Test MP4 Muxing (Encoding)</h2>
+        <button onclick="testMux()">Create Test MP4 with Mediabunny</button>
+        <div id="muxResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>📊 API Complexity Comparison</h2>
+        <div id="apiComparison"></div>
+    </div>
+
+    <!-- Load Mediabunny as a module -->
+    <script type="module">
+        import * as Mediabunny from './libs/mediabunny.min.mjs';
+        window.Mediabunny = Mediabunny;
+
+        // Show size comparison
+        const sizeDiv = document.getElementById('sizeComparison');
+        sizeDiv.innerHTML = `
+            <strong>Bundle Sizes:</strong><br>
+            • mp4-muxer.min.mjs: <strong>31 KB</strong><br>
+            • mediabunny.min.mjs: <strong>410 KB</strong> (13x larger)<br>
+            • Mediabunny includes: MP4, WebM, MP3, WAV, OGG mux+demux<br>
+            <br>
+            <strong>Library loaded!</strong> Exports available: ${Object.keys(Mediabunny).join(', ')}
+        `;
+
+        console.log('Mediabunny exports:', Mediabunny);
+    </script>
+
+    <script>
+        async function testDemux() {
+            const fileInput = document.getElementById('videoFile');
+            const resultDiv = document.getElementById('demuxResult');
+
+            if (!fileInput.files.length) {
+                resultDiv.innerHTML = '<div class="error">Please select a video file first</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="info">Extracting frames...</div>';
+            const startTime = performance.now();
+
+            try {
+                const file = fileInput.files[0];
+                const arrayBuffer = await file.arrayBuffer();
+
+                // Test Mediabunny demuxing API
+                const { MP4Demuxer } = window.Mediabunny;
+                const demuxer = new MP4Demuxer(arrayBuffer);
+
+                let frameCount = 0;
+                const frames = [];
+
+                // Extract all video frames
+                for await (const packet of demuxer.readVideoPackets()) {
+                    frameCount++;
+                    if (frameCount <= 5) { // Store first 5 for inspection
+                        frames.push(packet);
+                    }
+                }
+
+                const elapsed = performance.now() - startTime;
+
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        <strong>✅ Demuxing successful!</strong><br>
+                        Extracted ${frameCount} video packets in ${elapsed.toFixed(2)}ms<br>
+                        <br>
+                        <strong>First packet info:</strong><br>
+                        ${frames.length > 0 ? `
+                            Type: ${frames[0].type}<br>
+                            Timestamp: ${frames[0].timestamp}µs<br>
+                            Duration: ${frames[0].duration}µs<br>
+                            Data size: ${frames[0].data.byteLength} bytes
+                        ` : 'No packets'}
+                    </div>
+                `;
+
+            } catch (error) {
+                const elapsed = performance.now() - startTime;
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>❌ Demuxing failed</strong><br>
+                        Error: ${error.message}<br>
+                        Time elapsed: ${elapsed.toFixed(2)}ms
+                    </div>
+                `;
+                console.error('Demux error:', error);
+            }
+        }
+
+        async function testMux() {
+            const resultDiv = document.getElementById('muxResult');
+            resultDiv.innerHTML = '<div class="info">Creating test MP4...</div>';
+            const startTime = performance.now();
+
+            try {
+                const { MP4Muxer, ArrayBufferTarget } = window.Mediabunny;
+
+                // Create a simple test MP4
+                const muxer = new MP4Muxer({
+                    target: new ArrayBufferTarget(),
+                    video: {
+                        codec: 'avc',
+                        width: 640,
+                        height: 480
+                    }
+                });
+
+                // TODO: Would need actual encoded frames to test fully
+                // For now, just test instantiation
+
+                const elapsed = performance.now() - startTime;
+
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        <strong>✅ Muxer initialized!</strong><br>
+                        Created MP4Muxer instance in ${elapsed.toFixed(2)}ms<br>
+                        (Would need VideoEncoder frames for full test)
+                    </div>
+                `;
+
+            } catch (error) {
+                const elapsed = performance.now() - startTime;
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>❌ Muxing test failed</strong><br>
+                        Error: ${error.message}<br>
+                        Time elapsed: ${elapsed.toFixed(2)}ms
+                    </div>
+                `;
+                console.error('Mux error:', error);
+            }
+        }
+
+        // Show API comparison
+        document.getElementById('apiComparison').innerHTML = `
+            <strong>Current Approach (mp4-muxer):</strong>
+            <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px;">
+// Muxing (31 KB)
+const muxer = new MP4Muxer({ target, video });
+encoder.output = (chunk) => muxer.addVideoChunk(chunk);
+
+// Demuxing (custom parseMp4 in shared.js)
+const demuxed = await parseMp4(arrayBuffer);
+// Manual parsing of atoms, tracks, samples</pre>
+
+            <strong>Mediabunny Approach:</strong>
+            <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px;">
+// Muxing (same API - compatible!)
+const muxer = new MP4Muxer({ target, video });
+
+// Demuxing (much simpler! 410 KB includes this)
+const demuxer = new MP4Demuxer(arrayBuffer);
+for await (const packet of demuxer.readVideoPackets()) {
+  // Already parsed, ready to decode!
+}</pre>
+
+            <strong>Verdict:</strong>
+            <ul>
+                <li>✅ Mediabunny has cleaner demuxing API</li>
+                <li>✅ Same muxing API (compatible)</li>
+                <li>✅ One library for everything</li>
+                <li>⚠️ But 13x larger (410 KB vs 31 KB)</li>
+            </ul>
+        `;
+    </script>
+</body>
+</html>
