@@ -905,6 +905,76 @@ async function extractFramesWithSeeking(videoFile, demuxed, options = {}) {
     return { frames, width, height, duration };
 }
 
+async function extractFramesWithSmartSeeking(videoFile, demuxed, options = {}) {
+    const url = URL.createObjectURL(videoFile);
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    video.src = url;
+
+    await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => resolve();
+        video.onerror = () => reject(new Error('Video metadata failed to load.'));
+    });
+
+    const duration = Number.isFinite(video.duration) ? video.duration : (demuxed && demuxed.duration) || 0;
+    const width = video.videoWidth || (demuxed && demuxed.width) || 0;
+    const height = video.videoHeight || (demuxed && demuxed.height) || 0;
+    const canvas = document.createElement('canvas');
+    const sampleSize = options.sampleSize || 16;
+    canvas.width = sampleSize;
+    canvas.height = sampleSize;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    const inferredFps = estimateFps(demuxed) || options.fallbackFps || 30;
+    const seekFps = options.seekFps || (inferredFps * 2);
+    const step = 1 / seekFps;
+    const totalSteps = duration ? Math.max(1, Math.ceil(duration / step)) : 0;
+    const onProgress = options.onProgress;
+
+    let lastHash = null;
+    const frames = [];
+    let stepIndex = 0;
+    for (let t = 0; t <= duration; t += step) {
+        video.currentTime = Math.min(t, Math.max(0, duration - 0.000001));
+        await new Promise(resolve => {
+            const handler = () => resolve();
+            video.addEventListener('seeked', handler, { once: true });
+        });
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        ctx.drawImage(video, 0, 0, sampleSize, sampleSize);
+        const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            hash = (hash + data[i] + data[i + 1] + data[i + 2]) >>> 0;
+        }
+        if (hash !== lastHash) {
+            lastHash = hash;
+            const fullCanvas = document.createElement('canvas');
+            fullCanvas.width = width;
+            fullCanvas.height = height;
+            const fullCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
+            fullCtx.drawImage(video, 0, 0, width, height);
+            const bitmap = await createImageBitmap(fullCanvas);
+            frames.push(bitmap);
+        }
+        stepIndex += 1;
+        if (onProgress && totalSteps) {
+            onProgress({
+                decodedFrames: frames.length,
+                expectedFrames: totalSteps,
+                sampleIndex: stepIndex,
+                totalSamples: totalSteps
+            });
+        }
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    URL.revokeObjectURL(url);
+    return { frames, width, height, duration };
+}
+
 async function decodeFramesFromDemux(demuxed, fps, options = {}) {
     if (!demuxed || !demuxed.samples || !demuxed.samples.length) {
         throw new Error('Clip has no decodable samples.');
@@ -1080,9 +1150,11 @@ async function extractFramesWithMeta(videoFile, options = {}) {
     const duration = demuxed && demuxed.duration ? demuxed.duration : 0;
     const bitrate = estimateBitrate(videoFile.size, duration);
     const fpsForDecode = inferredFps || options.fallbackFps || 30;
-    const result = options.useSeeking
-        ? await extractFramesWithSeeking(videoFile, demuxed, { ...options, fallbackFps: fpsForDecode })
-        : await decodeFramesFromDemux(demuxed, fpsForDecode, options);
+    const result = options.useSeeking === 'smart'
+        ? await extractFramesWithSmartSeeking(videoFile, demuxed, { ...options, fallbackFps: fpsForDecode })
+        : options.useSeeking
+            ? await extractFramesWithSeeking(videoFile, demuxed, { ...options, fallbackFps: fpsForDecode })
+            : await decodeFramesFromDemux(demuxed, fpsForDecode, options);
     if (options.checkDuplicates) {
         const dupes = await detectDuplicateFrames(result.frames, options.duplicateOptions || {});
         if (dupes) {
