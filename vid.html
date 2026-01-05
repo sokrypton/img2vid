@@ -572,6 +572,7 @@
                 <label for="formatSelector">Format:</label>
                 <select id="formatSelector">
                     <option value="webm">WebM (VP9)</option>
+                    <option value="mp4">MP4 (H.264)</option>
                     <option value="gif">GIF</option>
                 </select>
             </div>
@@ -607,6 +608,17 @@
                     <option value="2000000">2</option>
                     <option value="4000000">4</option>
                     <option value="6000000" selected>6</option>
+                    <option value="8000000">8</option>
+                    <option value="12000000">12</option>
+                </select>
+            </div>
+
+            <div id="mp4Options" class="control-row format-options" style="display:none;">
+                <label for="mp4Bitrate">Bitrate (Mbps):</label>
+                <select id="mp4Bitrate">
+                    <option value="2000000">2</option>
+                    <option value="4000000">4</option>
+                    <option value="5000000" selected>5</option>
                     <option value="8000000">8</option>
                     <option value="12000000">12</option>
                 </select>
@@ -648,6 +660,7 @@
 
     <script src="shared.js"></script>
     <script src="libs/gif.js"></script>
+    <script type="module" src="libs/mp4-muxer-loader.js"></script>
     <script>
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -657,8 +670,10 @@
         const sizeSelector = document.getElementById('sizeSelector');
         const frameSkip = document.getElementById('frameSkip');
         const webmOptions = document.getElementById('webmOptions');
+        const mp4Options = document.getElementById('mp4Options');
         const gifOptions = document.getElementById('gifOptions');
         const webmBitrate = document.getElementById('webmBitrate');
+        const mp4Bitrate = document.getElementById('mp4Bitrate');
         const gifQuality = document.getElementById('gifQuality');
         const gifDither = document.getElementById('gifDither');
         const mergeBtnBottom = document.getElementById('mergeBtnBottom');
@@ -674,6 +689,8 @@
             // Show selected format options
             if (format === 'webm') {
                 webmOptions.style.display = 'flex';
+            } else if (format === 'mp4') {
+                mp4Options.style.display = 'flex';
             } else if (format === 'gif') {
                 gifOptions.style.display = 'flex';
             }
@@ -686,7 +703,44 @@
         sizeSelector.addEventListener('change', updateSizeEstimate);
         frameSkip.addEventListener('change', updateSizeEstimate);
         webmBitrate.addEventListener('change', updateSizeEstimate);
+        mp4Bitrate.addEventListener('change', updateSizeEstimate);
         gifQuality.addEventListener('input', updateSizeEstimate);
+
+        // Check H.264 encoding support
+        (async () => {
+            if ('VideoEncoder' in window && VideoEncoder.isConfigSupported) {
+                try {
+                    const testConfig = {
+                        codec: 'avc1.42001f',
+                        width: 640,
+                        height: 480,
+                        bitrate: 1000000,
+                        framerate: 30,
+                        avc: { format: 'avc' }
+                    };
+                    const support = await VideoEncoder.isConfigSupported(testConfig);
+                    if (!support.supported) {
+                        // Disable MP4 option and show note
+                        const mp4Option = formatSelector.querySelector('option[value="mp4"]');
+                        if (mp4Option) {
+                            mp4Option.disabled = true;
+                            mp4Option.textContent = 'MP4 (H.264) - Not supported';
+                        }
+                        console.warn('H.264 encoding not supported in this browser. MP4 export disabled.');
+                    }
+                } catch (error) {
+                    console.warn('Error checking H.264 support:', error);
+                }
+            } else {
+                // VideoEncoder not available
+                const mp4Option = formatSelector.querySelector('option[value="mp4"]');
+                if (mp4Option) {
+                    mp4Option.disabled = true;
+                    mp4Option.textContent = 'MP4 (H.264) - Not supported';
+                }
+                console.warn('VideoEncoder API not available. MP4 export disabled.');
+            }
+        })();
 
         function calculateOutputSize(inputWidth, inputHeight) {
             const sizeOption = sizeSelector.value;
@@ -756,6 +810,12 @@
             if (format === 'webm') {
                 const bitrate = parseInt(webmBitrate.value, 10) || 6000000;
                 // WebM estimate: bitrate * duration (in bits) / 8 (to bytes)
+                estimatedBytes = (bitrate * duration) / 8;
+                const mbps = (bitrate / 1000000).toFixed(1);
+                details = `${frameCount} frames${skipInfo} at ${fps} fps, ${width}×${height}px, ${mbps} Mbps = ${duration.toFixed(1)}s`;
+            } else if (format === 'mp4') {
+                const bitrate = parseInt(mp4Bitrate.value, 10) || 5000000;
+                // MP4 estimate: same as WebM (bitrate * duration / 8)
                 estimatedBytes = (bitrate * duration) / 8;
                 const mbps = (bitrate / 1000000).toFixed(1);
                 details = `${frameCount} frames${skipInfo} at ${fps} fps, ${width}×${height}px, ${mbps} Mbps = ${duration.toFixed(1)}s`;
@@ -1733,6 +1793,8 @@
             let bitrate, quality, dither;
             if (format === 'webm') {
                 bitrate = parseInt(webmBitrate.value, 10) || 6000000;
+            } else if (format === 'mp4') {
+                bitrate = parseInt(mp4Bitrate.value, 10) || 5000000;
             } else if (format === 'gif') {
                 quality = parseInt(gifQuality.value, 10) || 10;
                 dither = gifDither.value === 'false' ? false : gifDither.value;
@@ -1837,6 +1899,10 @@
                     encodeOptions.bitrate = bitrate;
                     blob = await encodeFramesWithCanvas(encodeOptions);
                     filename = 'merged.webm';
+                } else if (format === 'mp4') {
+                    encodeOptions.bitrate = bitrate;
+                    blob = await encodeMp4(encodeOptions);
+                    filename = 'merged.mp4';
                 } else if (format === 'gif') {
                     encodeOptions.gifQuality = quality;
                     encodeOptions.gifDither = dither;

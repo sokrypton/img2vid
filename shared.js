@@ -1451,6 +1451,109 @@ async function encodeGif(options) {
     });
 }
 
+async function encodeMp4(options) {
+    // Check if mp4-muxer library is loaded
+    if (typeof MP4Muxer === 'undefined' || typeof MP4ArrayBufferTarget === 'undefined') {
+        throw new Error('mp4-muxer library not loaded. Make sure to include mp4-muxer-loader.js as a module script.');
+    }
+
+    const Muxer = MP4Muxer;
+    const ArrayBufferTarget = MP4ArrayBufferTarget;
+
+    const width = options.width;
+    const height = options.height;
+    const fps = options.fps;
+    const bitrate = options.bitrate || 5000000; // Default 5 Mbps
+    const frameCount = options.frameCount;
+    const getFrame = options.getFrame;
+    const drawFrame = options.drawFrame;
+    const onProgress = options.onProgress;
+
+    // Create muxer with H.264 video
+    const muxer = new Muxer({
+        target: new ArrayBufferTarget(),
+        video: {
+            codec: 'avc',
+            width: width,
+            height: height
+        },
+        fastStart: 'in-memory',
+        firstTimestampBehavior: 'offset'
+    });
+
+    // Create VideoEncoder for H.264
+    const encoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: e => { throw e; }
+    });
+
+    // Configure encoder with H.264 codec
+    const encoderConfig = {
+        codec: 'avc1.42001f', // H.264 Baseline Profile Level 3.1
+        width: width,
+        height: height,
+        bitrate: bitrate,
+        framerate: fps,
+        avc: { format: 'avc' } // Required for MP4 container
+    };
+
+    // Check if codec is supported
+    if (VideoEncoder.isConfigSupported) {
+        const support = await VideoEncoder.isConfigSupported(encoderConfig);
+        if (!support.supported) {
+            throw new Error('H.264 encoding not supported in this browser. Try WebM format instead.');
+        }
+    }
+
+    encoder.configure(encoderConfig);
+
+    // Encode all frames
+    const { canvas, ctx } = createEncodingCanvas(width, height);
+    for (let i = 0; i < frameCount; i++) {
+        const frame = getFrame(i);
+        if (!frame) {
+            throw new Error('Frame not available at index ' + i);
+        }
+
+        // Draw frame to canvas
+        if (drawFrame) {
+            drawFrame(ctx, frame, i);
+        } else {
+            ctx.drawImage(frame, 0, 0, width, height);
+        }
+
+        // Create VideoFrame and encode
+        const videoFrame = new VideoFrame(canvas, {
+            timestamp: i * (1000000 / fps) // microseconds
+        });
+
+        // Mark keyframes every 2 seconds
+        const keyFrame = i % (fps * 2) === 0;
+        encoder.encode(videoFrame, { keyFrame });
+        videoFrame.close();
+
+        // Report progress
+        if (onProgress) {
+            onProgress({
+                encodedFrames: i + 1,
+                totalFrames: frameCount
+            });
+        }
+
+        // Yield to event loop
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    // Flush encoder and finalize muxer
+    await encoder.flush();
+    encoder.close();
+    muxer.finalize();
+
+    // Get buffer and create blob
+    const buffer = muxer.target.buffer;
+    return new Blob([buffer], { type: 'video/mp4' });
+}
+
 function createFramePlayback(options) {
     const getTotalFrames = options.getTotalFrames;
     const getCurrentFrame = options.getCurrentFrame;
