@@ -212,10 +212,6 @@
             margin-top: 10px;
         }
 
-        .clip-controls input[type="number"] {
-            width: 90px;
-        }
-
         .preview input[type="number"] {
             width: 85px;
         }
@@ -348,24 +344,16 @@
             flex-wrap: wrap;
         }
 
-        .edge-controls {
-            justify-content: space-between;
-            gap: 8px;
-        }
-
-        .edge-controls > * {
-            flex: 0 0 auto;
-        }
-
         .frame-controls .secondary {
             min-width: 56px;
             height: 44px;
         }
 
-        .frame-count {
-            min-width: 40px;
+        .frame-controls input[type="number"] {
+            width: 75px;
+            height: 44px;
             text-align: center;
-            font-variant-numeric: tabular-nums;
+            font-size: 16px;
         }
 
         .frame-range-row {
@@ -374,9 +362,9 @@
 
         .scrubber {
             position: relative;
-            --track-height: 32px;
-            --edge-width: 32px;
-            --arrow-size: 14px;
+            --track-height: 48px;
+            --edge-width: 64px;
+            --arrow-size: 20px;
             height: var(--track-height);
         }
 
@@ -463,25 +451,12 @@
 
         @media (max-width: 768px) {
             .scrubber {
-                --track-height: 36px;
-                --edge-width: 40px;
-                --arrow-size: 16px;
+                --track-height: 56px;
+                --edge-width: 72px;
+                --arrow-size: 22px;
             }
         }
 
-        .frame-controls input[type="number"] {
-            width: 90px;
-            height: 44px;
-            text-align: center;
-        }
-
-        .frame-controls input[type="number"]:first-child {
-            margin-left: 0;
-        }
-
-        .frame-controls input[type="number"]:last-child {
-            margin-right: 0;
-        }
 
         .preview-meta {
             margin-bottom: 8px;
@@ -658,18 +633,12 @@
             previewPlayback.stop();
         });
 
-        let globalPreviewRaf = null;
-
         mergeBtnBottom.addEventListener('click', () => mergeClips());
         clearBtnBottom.addEventListener('click', reset);
         globalPreviewScrubber.addEventListener('input', () => {
             previewPlayback.stop();
-            if (globalPreviewRaf) return;
-            globalPreviewRaf = requestAnimationFrame(() => {
-                globalPreviewRaf = null;
-                const frameIndex = parseInt(globalPreviewScrubber.value, 10) || 0;
-                drawMergedFrame(frameIndex);
-            });
+            const frameIndex = parseInt(globalPreviewScrubber.value, 10) || 0;
+            drawMergedFrame(frameIndex);
         });
         globalPreviewPlayBtn.addEventListener('click', () => previewPlayback.toggle());
         cropTopInput.addEventListener('change', () => updateCropFromInputs());
@@ -810,10 +779,9 @@
                 const viewerHtml = clip.viewerOpen ? `
                     <div class="frame-viewer">
                         <canvas class="frame-canvas" id="frameCanvas-${clip.id}"></canvas>
-                        <div class="frame-controls edge-controls">
+                        <div class="frame-controls">
                             <input type="number" id="rangeStartInput-${clip.id}" data-field="start" min="1" max="${clip.totalFrames}" value="${clip.startFrame + 1}">
                             <button class="secondary" data-action="play-range">${clip.isPlaying ? '⏸' : '▶'}</button>
-                            <div class="frame-count" id="frameCounter-${clip.id}">${clip.currentFrame + 1}</div>
                             <input type="number" id="rangeEndInput-${clip.id}" data-field="end" min="1" max="${clip.totalFrames}" value="${clip.endFrame + 1}">
                         </div>
                         <div class="frame-range-row">
@@ -907,6 +875,14 @@
                         const field = input.getAttribute('data-field');
                         const value = parseInt(input.value, 10);
                         if (Number.isNaN(value)) return;
+
+                        // Stop playback if playing
+                        if (clip.playIntervalId) {
+                            clearInterval(clip.playIntervalId);
+                            clip.playIntervalId = null;
+                            clip.isPlaying = false;
+                        }
+
                         if (field === 'start') {
                             clip.startFrame = Math.max(0, Math.min(value - 1, clip.totalFrames - 1));
                             if (clip.startFrame > clip.endFrame) clip.endFrame = clip.startFrame;
@@ -920,8 +896,10 @@
                         }
                         if (clip.currentFrame < clip.startFrame) clip.currentFrame = clip.startFrame;
                         if (clip.currentFrame > clip.endFrame) clip.currentFrame = clip.endFrame;
+
                         drawClipFrame(clip);
                         refreshGlobalPreviewForClipChange();
+                        renderClips();
                     });
                 });
                 const scrubberTrack = card.querySelector(`#scrubberTrack-${clip.id}`);
@@ -934,6 +912,7 @@
                         const handle = e.target.dataset.handle;
                         if (!handle) return;
                         previewPlayback.stop();
+                        const wasPlaying = clip.isPlaying;
                         if (clip.playIntervalId) {
                             clearInterval(clip.playIntervalId);
                             clip.playIntervalId = null;
@@ -948,7 +927,11 @@
                         if (e.pointerId !== undefined) {
                             scrubberTrack.setPointerCapture(e.pointerId);
                         }
-                        scheduleScrubberUpdate(e.clientX);
+                        updateScrubberFromPointer(e.clientX);
+                        // Update button icon if playback was stopped
+                        if (wasPlaying) {
+                            renderClips();
+                        }
                     };
                     [startHandle, endHandle, startHit, endHit].forEach(handleEl => {
                         handleEl.addEventListener('pointerdown', onPointerDown);
@@ -1065,7 +1048,7 @@
         let resizeRaf = null;
 
         window.addEventListener('pointermove', (e) => {
-            if (scrubberDragState) scheduleScrubberUpdate(e.clientX);
+            if (scrubberDragState) updateScrubberFromPointer(e.clientX);
         });
         window.addEventListener('pointerup', () => endScrubberDrag());
         window.addEventListener('pointercancel', () => endScrubberDrag());
@@ -1084,7 +1067,6 @@
 
         function drawClipFrame(clip) {
             const canvas = document.getElementById(`frameCanvas-${clip.id}`);
-            const counter = document.getElementById(`frameCounter-${clip.id}`);
             const rangeStartInput = document.getElementById(`rangeStartInput-${clip.id}`);
             const rangeEndInput = document.getElementById(`rangeEndInput-${clip.id}`);
             const scrubberFill = document.getElementById(`scrubberFill-${clip.id}`);
@@ -1104,7 +1086,6 @@
             }
             ctx.drawImage(frame, 0, 0);
 
-            if (counter) counter.textContent = `${clip.currentFrame + 1}`;
             if (rangeStartInput) rangeStartInput.value = String(clip.startFrame + 1);
             if (rangeEndInput) rangeEndInput.value = String(clip.endFrame + 1);
 
@@ -1479,7 +1460,7 @@
             }
         });
         window.addEventListener('pointermove', (e) => {
-            if (cropDragState) scheduleCropUpdate(e);
+            if (cropDragState) processCropDrag(e);
         });
         window.addEventListener('pointerup', () => endCropDrag());
         window.addEventListener('pointercancel', () => endCropDrag());
@@ -1492,7 +1473,7 @@
         cropOverlay.addEventListener('touchmove', (e) => {
             if (!cropDragState || !e.touches || !e.touches[0]) return;
             const touch = e.touches[0];
-            scheduleCropUpdate({ clientX: touch.clientX, clientY: touch.clientY });
+            processCropDrag({ clientX: touch.clientX, clientY: touch.clientY });
             e.preventDefault();
         }, { passive: false });
         cropOverlay.addEventListener('touchend', () => endCropDrag());
