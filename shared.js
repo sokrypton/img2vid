@@ -937,6 +937,11 @@ async function extractFramesWithSmartSeeking(videoFile, demuxed, options = {}) {
     canvas.width = sampleSize;
     canvas.height = sampleSize;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const useDirectBitmap = options.useDirectBitmap !== false && typeof createImageBitmap === 'function';
+    const fullCanvas = document.createElement('canvas');
+    fullCanvas.width = width;
+    fullCanvas.height = height;
+    const fullCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
 
     const inferredFps = estimateFps(demuxed) || options.fallbackFps || 30;
     const seekFps = options.seekFps || (inferredFps * 2);
@@ -962,12 +967,13 @@ async function extractFramesWithSmartSeeking(videoFile, demuxed, options = {}) {
         }
         if (hash !== lastHash) {
             lastHash = hash;
-            const fullCanvas = document.createElement('canvas');
-            fullCanvas.width = width;
-            fullCanvas.height = height;
-            const fullCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
-            fullCtx.drawImage(video, 0, 0, width, height);
-            const bitmap = await createImageBitmap(fullCanvas);
+            let bitmap;
+            if (useDirectBitmap) {
+                bitmap = await createImageBitmap(video);
+            } else {
+                fullCtx.drawImage(video, 0, 0, width, height);
+                bitmap = await createImageBitmap(fullCanvas);
+            }
             frames.push(bitmap);
         }
         stepIndex += 1;
@@ -982,6 +988,120 @@ async function extractFramesWithSmartSeeking(videoFile, demuxed, options = {}) {
         await new Promise(resolve => setTimeout(resolve, 0));
     }
 
+    URL.revokeObjectURL(url);
+    return { frames, width, height, duration };
+}
+
+async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
+    const url = URL.createObjectURL(videoFile);
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    video.src = url;
+
+    await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => resolve();
+        video.onerror = () => reject(new Error('Video metadata failed to load.'));
+    });
+
+    const duration = Number.isFinite(video.duration) ? video.duration : (demuxed && demuxed.duration) || 0;
+    const width = video.videoWidth || (demuxed && demuxed.width) || 0;
+    const height = video.videoHeight || (demuxed && demuxed.height) || 0;
+    const sampleSize = options.sampleSize || 16;
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = sampleSize;
+    sampleCanvas.height = sampleSize;
+    const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+    const useDirectBitmap = options.useDirectBitmap !== false && typeof createImageBitmap === 'function';
+    const fullCanvas = document.createElement('canvas');
+    fullCanvas.width = width;
+    fullCanvas.height = height;
+    const fullCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
+
+    let lastHash = null;
+    const frames = [];
+    const onProgress = options.onProgress;
+    let totalSamples = 0;
+    let stopped = false;
+    let resolveCapture = null;
+
+    function captureFrame() {
+        sampleCtx.drawImage(video, 0, 0, sampleSize, sampleSize);
+        const data = sampleCtx.getImageData(0, 0, sampleSize, sampleSize).data;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            hash = (hash + data[i] + data[i + 1] + data[i + 2]) >>> 0;
+        }
+        if (hash !== lastHash) {
+            lastHash = hash;
+            return (async () => {
+                let bitmap;
+                if (useDirectBitmap) {
+                    bitmap = await createImageBitmap(video);
+                } else {
+                    fullCtx.drawImage(video, 0, 0, width, height);
+                    bitmap = await createImageBitmap(fullCanvas);
+                }
+                frames.push(bitmap);
+            })();
+        }
+        return Promise.resolve();
+    }
+
+    const rate = options.playbackRate || 0.25;
+    video.playbackRate = rate;
+
+    const playbackDone = new Promise((resolve, reject) => {
+        video.onended = () => {
+            stopped = true;
+            if (resolveCapture) resolveCapture();
+            resolve();
+        };
+        video.onerror = () => reject(new Error('Video playback failed.'));
+    });
+
+    const captureLoop = new Promise(resolve => {
+        resolveCapture = resolve;
+        if (typeof video.requestVideoFrameCallback === 'function') {
+            const onFrame = async () => {
+                if (stopped) {
+                    resolve();
+                    return;
+                }
+                totalSamples += 1;
+                await captureFrame();
+                if (onProgress && duration) {
+                    const expectedFrames = Math.max(1, Math.round(duration * (estimateFps(demuxed) || 30)));
+                    onProgress({
+                        decodedFrames: frames.length,
+                        expectedFrames,
+                        sampleIndex: totalSamples,
+                        totalSamples: expectedFrames
+                    });
+                }
+                video.requestVideoFrameCallback(onFrame);
+            };
+            video.requestVideoFrameCallback(onFrame);
+        } else {
+            const fps = estimateFps(demuxed) || 30;
+            const intervalMs = 1000 / (fps * 2);
+            const timer = setInterval(async () => {
+                if (stopped) {
+                    clearInterval(timer);
+                    resolve();
+                    return;
+                }
+                totalSamples += 1;
+                await captureFrame();
+            }, intervalMs);
+        }
+    });
+
+    await video.play();
+    await Promise.all([playbackDone, captureLoop]);
+    await captureFrame();
+    video.pause();
     URL.revokeObjectURL(url);
     return { frames, width, height, duration };
 }
@@ -1190,7 +1310,9 @@ async function extractFramesWithMeta(videoFile, options = {}) {
         ? await extractFramesWithSmartSeeking(videoFile, demuxed, { ...options, fallbackFps: fpsForDecode })
         : options.useSeeking
             ? await extractFramesWithSeeking(videoFile, demuxed, { ...options, fallbackFps: fpsForDecode })
-            : await decodeFramesFromDemux(demuxed, fpsForDecode, options);
+            : options.usePlayback
+                ? await extractFramesWithPlayback(videoFile, demuxed, { ...options, fallbackFps: fpsForDecode })
+                : await decodeFramesFromDemux(demuxed, fpsForDecode, options);
     if (options.checkDuplicates) {
         const dupes = await detectDuplicateFrames(result.frames, options.duplicateOptions || {});
         if (dupes) {
