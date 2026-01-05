@@ -975,15 +975,13 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
         }
     }
 
-    // 4. Setup for deduplication (optional, disabled by default for VFR accuracy)
+    // 4. Setup for hash calculation (always needed for duplicate detection/reporting)
     const skipDuplicates = options.skipDuplicates !== undefined ? options.skipDuplicates : false;
     const sampleSize = options.sampleSize || 16;
-    const sampleCanvas = skipDuplicates ? document.createElement('canvas') : null;
-    const sampleCtx = skipDuplicates ? (() => {
-        sampleCanvas.width = sampleSize;
-        sampleCanvas.height = sampleSize;
-        return sampleCanvas.getContext('2d', { willReadFrequently: true });
-    })() : null;
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = sampleSize;
+    sampleCanvas.height = sampleSize;
+    const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
 
     let lastHash = null;
     const frames = [];
