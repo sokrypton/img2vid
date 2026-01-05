@@ -572,7 +572,7 @@
                 <label for="formatSelector">Format:</label>
                 <select id="formatSelector">
                     <option value="webm">WebM (VP9)</option>
-                    <option value="mp4">MP4 (H.264)</option>
+                    <option value="mp4" selected>MP4 (H.264)</option>
                     <option value="gif">GIF</option>
                 </select>
             </div>
@@ -602,7 +602,7 @@
             </div>
 
             <!-- Format-specific options -->
-            <div id="webmOptions" class="control-row format-options">
+            <div id="webmOptions" class="control-row format-options" style="display:none;">
                 <label for="webmBitrate">Bitrate (Mbps):</label>
                 <select id="webmBitrate">
                     <option value="2000000">2</option>
@@ -613,7 +613,7 @@
                 </select>
             </div>
 
-            <div id="mp4Options" class="control-row format-options" style="display:none;">
+            <div id="mp4Options" class="control-row format-options">
                 <label for="mp4Bitrate">Bitrate (Mbps):</label>
                 <select id="mp4Bitrate">
                     <option value="2000000">2</option>
