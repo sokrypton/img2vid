@@ -142,6 +142,7 @@
             transition: all 0.3s;
             min-height: 44px;
             -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
         }
 
         button.primary {
@@ -261,16 +262,19 @@
             position: absolute;
             border: 4px solid #00bcd4;
             touch-action: none;
+            will-change: left, top, width, height;
         }
 
         .crop-shade {
             position: absolute;
             pointer-events: none;
+            will-change: left, top, width, height;
         }
 
         .crop-shade .shade {
             position: absolute;
             background: rgba(0,0,0,0.25);
+            will-change: left, top, width, height;
         }
 
         .crop-handle {
@@ -332,6 +336,7 @@
             border-radius: 4px;
             background: #000;
             display: block;
+            will-change: contents;
         }
 
         .frame-controls {
@@ -653,12 +658,18 @@
             previewPlayback.stop();
         });
 
+        let globalPreviewRaf = null;
+
         mergeBtnBottom.addEventListener('click', () => mergeClips());
         clearBtnBottom.addEventListener('click', reset);
         globalPreviewScrubber.addEventListener('input', () => {
             previewPlayback.stop();
-            const frameIndex = parseInt(globalPreviewScrubber.value, 10) || 0;
-            drawMergedFrame(frameIndex);
+            if (globalPreviewRaf) return;
+            globalPreviewRaf = requestAnimationFrame(() => {
+                globalPreviewRaf = null;
+                const frameIndex = parseInt(globalPreviewScrubber.value, 10) || 0;
+                drawMergedFrame(frameIndex);
+            });
         });
         globalPreviewPlayBtn.addEventListener('click', () => previewPlayback.toggle());
         cropTopInput.addEventListener('change', () => updateCropFromInputs());
@@ -1051,16 +1062,24 @@
             });
         }
 
-        window.addEventListener('pointermove', (e) => scheduleScrubberUpdate(e.clientX));
+        let resizeRaf = null;
+
+        window.addEventListener('pointermove', (e) => {
+            if (scrubberDragState) scheduleScrubberUpdate(e.clientX);
+        });
         window.addEventListener('pointerup', () => endScrubberDrag());
         window.addEventListener('pointercancel', () => endScrubberDrag());
         window.addEventListener('resize', () => {
-            clips.forEach(clip => {
-                if (clip.viewerOpen && clip.frames && clip.frames.length) {
-                    drawClipFrame(clip);
-                }
+            if (resizeRaf) return;
+            resizeRaf = requestAnimationFrame(() => {
+                resizeRaf = null;
+                clips.forEach(clip => {
+                    if (clip.viewerOpen && clip.frames && clip.frames.length) {
+                        drawClipFrame(clip);
+                    }
+                });
+                refreshGlobalPreviewForClipChange();
             });
-            refreshGlobalPreviewForClipChange();
         });
 
         function drawClipFrame(clip) {
@@ -1253,6 +1272,8 @@
 
         let cropRect = null;
         let cropDragState = null;
+        let cropRaf = null;
+        let cropPendingEvent = null;
 
         function ensureCropRect(width, height) {
             if (cropRect && cropRect.w > 0 && cropRect.h > 0) return;
@@ -1261,7 +1282,7 @@
             cropRect = { x: 0, y: 0, w: width, h: cropHeight };
         }
 
-        function updateCropOverlay() {
+        function updateCropOverlay(updateInputs = true) {
             if (!cropRect || !globalPreviewCanvas) return;
             const canvasRect = globalPreviewCanvas.getBoundingClientRect();
             const stageRect = previewStage.getBoundingClientRect();
@@ -1302,12 +1323,14 @@
                 shadeRight.style.width = `${Math.max(0, rightW)}px`;
                 shadeRight.style.height = `${Math.max(0, cropRect.h * scaleY)}px`;
             }
-            const maxW = globalPreviewCanvas.width || 0;
-            const maxH = globalPreviewCanvas.height || 0;
-            cropTopInput.value = Math.round(cropRect.y);
-            cropLeftInput.value = Math.round(cropRect.x);
-            cropBottomInput.value = Math.max(0, Math.round(maxH - (cropRect.y + cropRect.h)));
-            cropRightInput.value = Math.max(0, Math.round(maxW - (cropRect.x + cropRect.w)));
+            if (updateInputs) {
+                const maxW = globalPreviewCanvas.width || 0;
+                const maxH = globalPreviewCanvas.height || 0;
+                cropTopInput.value = Math.round(cropRect.y);
+                cropLeftInput.value = Math.round(cropRect.x);
+                cropBottomInput.value = Math.max(0, Math.round(maxH - (cropRect.y + cropRect.h)));
+                cropRightInput.value = Math.max(0, Math.round(maxW - (cropRect.x + cropRect.w)));
+            }
         }
 
         function hideCropOverlay() {
@@ -1354,7 +1377,7 @@
             };
         }
 
-        function moveCropDrag(e) {
+        function processCropDrag(e) {
             if (!cropDragState || !cropRect) return;
             const dx = (e.clientX - cropDragState.startX) * cropDragState.scaleX;
             const dy = (e.clientY - cropDragState.startY) * cropDragState.scaleY;
@@ -1417,11 +1440,31 @@
             cropDragState.startX = e.clientX;
             cropDragState.startY = e.clientY;
             cropDragState.orig = { ...cropRect };
-            updateCropOverlay();
+            updateCropOverlay(false);
+        }
+
+        function scheduleCropUpdate(e) {
+            if (!cropDragState) return;
+            cropPendingEvent = e;
+            if (cropRaf) return;
+            cropRaf = requestAnimationFrame(() => {
+                cropRaf = null;
+                if (cropPendingEvent === null) return;
+                processCropDrag(cropPendingEvent);
+                cropPendingEvent = null;
+            });
         }
 
         function endCropDrag() {
-            cropDragState = null;
+            if (cropDragState) {
+                cropDragState = null;
+                cropPendingEvent = null;
+                if (cropRaf) {
+                    cancelAnimationFrame(cropRaf);
+                    cropRaf = null;
+                }
+                updateCropOverlay(true);
+            }
         }
 
         cropOverlay.addEventListener('pointerdown', (e) => {
@@ -1435,7 +1478,9 @@
                 startCropDrag(e, 'move');
             }
         });
-        window.addEventListener('pointermove', (e) => moveCropDrag(e));
+        window.addEventListener('pointermove', (e) => {
+            if (cropDragState) scheduleCropUpdate(e);
+        });
         window.addEventListener('pointerup', () => endCropDrag());
         window.addEventListener('pointercancel', () => endCropDrag());
         cropOverlay.addEventListener('touchstart', (e) => {
@@ -1447,12 +1492,11 @@
         cropOverlay.addEventListener('touchmove', (e) => {
             if (!cropDragState || !e.touches || !e.touches[0]) return;
             const touch = e.touches[0];
-            moveCropDrag({ clientX: touch.clientX, clientY: touch.clientY });
+            scheduleCropUpdate({ clientX: touch.clientX, clientY: touch.clientY });
             e.preventDefault();
         }, { passive: false });
         cropOverlay.addEventListener('touchend', () => endCropDrag());
         cropOverlay.addEventListener('touchcancel', () => endCropDrag());
-        window.addEventListener('resize', () => updateCropOverlay());
 
         async function mergeClips() {
             setStatus('Preparing merge...');
