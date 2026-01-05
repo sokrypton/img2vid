@@ -80,63 +80,6 @@ function estimateFps(demuxed) {
     return null;
 }
 
-function hashBitmap(bitmap, size, ctx) {
-    ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(bitmap, 0, 0, size, size);
-    const data = ctx.getImageData(0, 0, size, size).data;
-    let hash = 0;
-    for (let i = 0; i < data.length; i += 4) {
-        hash = (hash + data[i] + data[i + 1] + data[i + 2]) >>> 0;
-    }
-    return hash;
-}
-
-async function detectDuplicateFrames(frames, options = {}) {
-    if (!frames || frames.length < 2) return null;
-    const sampleCount = Math.min(options.sampleCount || 60, frames.length);
-    const size = options.sampleSize || 16;
-    const startIndex = Math.max(0, frames.length - sampleCount);
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const hashes = [];
-    for (let i = startIndex; i < frames.length; i++) {
-        const frame = frames[i];
-        ctx.clearRect(0, 0, size, size);
-        ctx.drawImage(frame, 0, 0, size, size);
-        const data = ctx.getImageData(0, 0, size, size).data;
-        let hash = 0;
-        for (let j = 0; j < data.length; j += 4) {
-            hash = (hash + data[j] + data[j + 1] + data[j + 2]) >>> 0;
-        }
-        hashes.push({ index: i, hash });
-    }
-    let duplicates = 0;
-    let consecutive = 0;
-    const duplicateIndices = [];
-    const seen = new Map();
-    for (let i = 0; i < hashes.length; i++) {
-        const entry = hashes[i];
-        if (seen.has(entry.hash)) {
-            duplicates += 1;
-        } else {
-            seen.set(entry.hash, entry.index);
-        }
-        if (i > 0 && entry.hash === hashes[i - 1].hash) {
-            consecutive += 1;
-            duplicateIndices.push(entry.index);
-        }
-    }
-    return {
-        sampleCount,
-        startIndex,
-        duplicates,
-        consecutive,
-        duplicateIndices
-    };
-}
-
 function parseMp4(buffer) {
     const view = new DataView(buffer);
     const topLevel = [];
@@ -374,8 +317,7 @@ function parseMp4(buffer) {
         width,
         height,
         duration: duration / timescale,
-        nativeFps,
-        timestampMode: 'index'
+        nativeFps
     };
 }
 
@@ -840,158 +782,6 @@ async function demuxVideoFile(videoFile) {
     return parseMp4(buffer);
 }
 
-async function extractFramesWithSeeking(videoFile, demuxed, options = {}) {
-    const url = URL.createObjectURL(videoFile);
-    const video = document.createElement('video');
-    video.preload = 'auto';
-    video.muted = true;
-    video.playsInline = true;
-    video.src = url;
-
-    await new Promise((resolve, reject) => {
-        video.onloadedmetadata = () => resolve();
-        video.onerror = () => reject(new Error('Video metadata failed to load.'));
-    });
-
-    const duration = Number.isFinite(video.duration) ? video.duration : (demuxed && demuxed.duration) || 0;
-    const width = video.videoWidth || (demuxed && demuxed.width) || 0;
-    const height = video.videoHeight || (demuxed && demuxed.height) || 0;
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-    let timestamps = [];
-    if (demuxed && demuxed.samples && demuxed.samples.length) {
-        timestamps = demuxed.samples.map(sample => {
-            const pts = Number.isFinite(sample.ptsUs) ? sample.ptsUs : sample.timestampUs;
-            return Math.max(0, Number(pts) || 0);
-        }).sort((a, b) => a - b);
-    } else if (duration && options.fallbackFps) {
-        const fps = options.fallbackFps;
-        const count = Math.max(1, Math.round(duration * fps));
-        for (let i = 0; i < count; i++) {
-            timestamps.push((i / fps) * 1000000);
-        }
-    }
-
-    if (!timestamps.length) {
-        URL.revokeObjectURL(url);
-        throw new Error('No timestamps available for seeking.');
-    }
-
-    const frames = [];
-    const expectedFrames = timestamps.length;
-    const onProgress = options.onProgress;
-    let lastTime = -1;
-    for (let i = 0; i < timestamps.length; i++) {
-        let time = timestamps[i] / 1000000;
-        if (duration) {
-            time = Math.min(time, Math.max(0, duration - 0.000001));
-        }
-        if (time <= lastTime) {
-            time = lastTime + 0.000001;
-        }
-        lastTime = time;
-        video.currentTime = time;
-        await new Promise(resolve => {
-            const handler = () => resolve();
-            video.addEventListener('seeked', handler, { once: true });
-        });
-        await new Promise(resolve => requestAnimationFrame(resolve));
-        ctx.drawImage(video, 0, 0, width, height);
-        const bitmap = await createImageBitmap(canvas);
-        frames.push(bitmap);
-        if (onProgress) {
-            onProgress({
-                decodedFrames: frames.length,
-                expectedFrames,
-                sampleIndex: i + 1,
-                totalSamples: expectedFrames
-            });
-        }
-    }
-
-    URL.revokeObjectURL(url);
-    return { frames, width, height, duration };
-}
-
-async function extractFramesWithSmartSeeking(videoFile, demuxed, options = {}) {
-    const url = URL.createObjectURL(videoFile);
-    const video = document.createElement('video');
-    video.preload = 'auto';
-    video.muted = true;
-    video.playsInline = true;
-    video.src = url;
-
-    await new Promise((resolve, reject) => {
-        video.onloadedmetadata = () => resolve();
-        video.onerror = () => reject(new Error('Video metadata failed to load.'));
-    });
-
-    const duration = Number.isFinite(video.duration) ? video.duration : (demuxed && demuxed.duration) || 0;
-    const width = video.videoWidth || (demuxed && demuxed.width) || 0;
-    const height = video.videoHeight || (demuxed && demuxed.height) || 0;
-    const canvas = document.createElement('canvas');
-    const sampleSize = options.sampleSize || 16;
-    canvas.width = sampleSize;
-    canvas.height = sampleSize;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const useDirectBitmap = options.useDirectBitmap !== false && typeof createImageBitmap === 'function';
-    const fullCanvas = document.createElement('canvas');
-    fullCanvas.width = width;
-    fullCanvas.height = height;
-    const fullCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
-
-    const inferredFps = estimateFps(demuxed) || options.fallbackFps || 30;
-    const seekFps = options.seekFps || (inferredFps * 2);
-    const step = 1 / seekFps;
-    const totalSteps = duration ? Math.max(1, Math.ceil(duration / step)) : 0;
-    const onProgress = options.onProgress;
-
-    let lastHash = null;
-    const frames = [];
-    let stepIndex = 0;
-    for (let t = 0; t <= duration; t += step) {
-        video.currentTime = Math.min(t, Math.max(0, duration - 0.000001));
-        await new Promise(resolve => {
-            const handler = () => resolve();
-            video.addEventListener('seeked', handler, { once: true });
-        });
-        await new Promise(resolve => requestAnimationFrame(resolve));
-        ctx.drawImage(video, 0, 0, sampleSize, sampleSize);
-        const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
-        let hash = 0;
-        for (let i = 0; i < data.length; i += 4) {
-            hash = (hash + data[i] + data[i + 1] + data[i + 2]) >>> 0;
-        }
-        if (hash !== lastHash) {
-            lastHash = hash;
-            let bitmap;
-            if (useDirectBitmap) {
-                bitmap = await createImageBitmap(video);
-            } else {
-                fullCtx.drawImage(video, 0, 0, width, height);
-                bitmap = await createImageBitmap(fullCanvas);
-            }
-            frames.push(bitmap);
-        }
-        stepIndex += 1;
-        if (onProgress && totalSteps) {
-            onProgress({
-                decodedFrames: frames.length,
-                expectedFrames: totalSteps,
-                sampleIndex: stepIndex,
-                totalSamples: totalSteps
-            });
-        }
-        await new Promise(resolve => setTimeout(resolve, 0));
-    }
-
-    URL.revokeObjectURL(url);
-    return { frames, width, height, duration };
-}
-
 async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
     const url = URL.createObjectURL(videoFile);
     const video = document.createElement('video');
@@ -1049,8 +839,12 @@ async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
         return Promise.resolve();
     }
 
-    const rate = options.playbackRate || 0.25;
-    video.playbackRate = rate;
+    const baseRate = options.playbackRate || 1.0;
+    const fallbackRate = Number.isFinite(options.playbackRateFallback)
+        ? options.playbackRateFallback
+        : baseRate * 0.5;
+    const supportsRVFC = typeof video.requestVideoFrameCallback === 'function';
+    video.playbackRate = supportsRVFC ? baseRate : fallbackRate;
 
     const playbackDone = new Promise((resolve, reject) => {
         video.onended = () => {
@@ -1063,7 +857,7 @@ async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
 
     const captureLoop = new Promise(resolve => {
         resolveCapture = resolve;
-        if (typeof video.requestVideoFrameCallback === 'function') {
+        if (supportsRVFC) {
             const onFrame = async () => {
                 if (stopped) {
                     resolve();
@@ -1106,219 +900,13 @@ async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
     return { frames, width, height, duration };
 }
 
-async function decodeFramesFromDemux(demuxed, fps, options = {}) {
-    if (!demuxed || !demuxed.samples || !demuxed.samples.length) {
-        throw new Error('Clip has no decodable samples.');
-    }
-    const onProgress = options.onProgress;
-    const captureAll = options.captureAll === true;
-    const targetIntervalUs = 1000000 / fps;
-    const expectedFrames = demuxed.duration ? Math.max(1, Math.round(demuxed.duration * fps)) : 0;
-    let outputWidth = demuxed.width || 0;
-    let outputHeight = demuxed.height || 0;
-    const timestampMode = options.timestampMode || demuxed.timestampMode || 'pts';
-    const effectiveDedupe = options.dedupeFrames && timestampMode !== 'index';
-
-    async function decodePass(passCaptureAll) {
-        let nextTargetUs = 0;
-        const frames = [];
-        const framesByIndex = [];
-        const outputTimestamps = [];
-        const pending = [];
-        let chain = Promise.resolve();
-        let outputIndex = 0;
-        let decoderError = null;
-
-        let hashCanvas = null;
-        let hashCtx = null;
-        let lastHash = null;
-        const hashSize = options.dedupeSampleSize || 16;
-        if (effectiveDedupe) {
-            hashCanvas = document.createElement('canvas');
-            hashCanvas.width = hashSize;
-            hashCanvas.height = hashSize;
-            hashCtx = hashCanvas.getContext('2d', { willReadFrequently: true });
-        }
-
-        const decoder = new VideoDecoder({
-            output: (frame) => {
-                const timestampUs = frame.timestamp;
-                if (passCaptureAll || (timestampUs + targetIntervalUs / 2 >= nextTargetUs)) {
-                    const slot = outputIndex++;
-                    outputTimestamps.push(timestampUs);
-                    const promise = chain = chain.then(() => (
-                        createImageBitmap(frame).then(bitmap => {
-                            let keep = true;
-                            if (effectiveDedupe) {
-                                const hash = hashBitmap(bitmap, hashSize, hashCtx);
-                                if (hash === lastHash) {
-                                    keep = false;
-                                } else {
-                                    lastHash = hash;
-                                }
-                            }
-                            if (keep) {
-                                if (timestampMode === 'index') {
-                                    const frameIndex = Math.round(timestampUs);
-                                    framesByIndex[frameIndex] = bitmap;
-                                } else {
-                                    frames.push({ index: slot, bitmap });
-                                }
-                            } else {
-                                bitmap.close();
-                            }
-                            outputWidth = outputWidth || frame.displayWidth || frame.codedWidth;
-                            outputHeight = outputHeight || frame.displayHeight || frame.codedHeight;
-                        }).finally(() => frame.close())
-                    ));
-                    pending.push(promise);
-                    if (!passCaptureAll) {
-                        nextTargetUs += targetIntervalUs;
-                    }
-                } else {
-                    frame.close();
-                }
-            },
-            error: e => { decoderError = e; }
-        });
-
-        const config = { codec: demuxed.codec };
-        if (demuxed.description) {
-            config.description = demuxed.description;
-        }
-        if (demuxed.width && demuxed.height) {
-            config.codedWidth = demuxed.width;
-            config.codedHeight = demuxed.height;
-        }
-        if (VideoDecoder.isConfigSupported) {
-            const support = await VideoDecoder.isConfigSupported(config);
-            if (!support.supported) {
-                decoder.close();
-                throw new Error('Decoder not supported for this clip.');
-            }
-        }
-        decoder.configure(config);
-
-        let lastTimestamp = null;
-        for (let i = 0; i < demuxed.samples.length; i++) {
-            const sample = demuxed.samples[i];
-            let timestamp = timestampMode === 'index'
-                ? (Number.isFinite(sample.sampleIndex) ? sample.sampleIndex : i)
-                : Math.round(Number(sample.timestampUs));
-            if (!Number.isFinite(timestamp)) {
-                throw new Error('Invalid sample timestamp at index ' + i);
-            }
-            if (timestamp < 0) {
-                timestamp = 0;
-            }
-            if (lastTimestamp !== null && timestamp <= lastTimestamp) {
-                timestamp = lastTimestamp + 1;
-            }
-            lastTimestamp = timestamp;
-            const chunkInit = {
-                type: sample.type,
-                timestamp: timestamp,
-                data: sample.data
-            };
-            if (sample.durationUs && Number.isFinite(sample.durationUs) && sample.durationUs > 0) {
-                chunkInit.duration = Math.round(sample.durationUs);
-            }
-            decoder.decode(new EncodedVideoChunk(chunkInit));
-            if (decoderError) {
-                throw new Error('Decoder error: ' + (decoderError.message || decoderError.name || 'Unknown'));
-            }
-            if (onProgress) {
-                onProgress({
-                    decodedFrames: frames.length,
-                    expectedFrames,
-                    sampleIndex: i + 1,
-                    totalSamples: demuxed.samples.length
-                });
-            }
-            await new Promise(resolve => setTimeout(resolve, 0));
-        }
-
-        await decoder.flush();
-        await Promise.all(pending);
-        decoder.close();
-        frames.sort((a, b) => a.index - b.index);
-        if (timestampMode === 'index') {
-            const order = demuxed.samples.map((sample, idx) => {
-                const index = Number.isFinite(sample.sampleIndex) ? sample.sampleIndex : idx;
-                const pts = Number.isFinite(sample.ptsUs) ? sample.ptsUs : sample.timestampUs;
-                return { index, pts: Number(pts) || 0 };
-            }).sort((a, b) => a.pts - b.pts || a.index - b.index);
-            const orderedFrames = order.map(entry => framesByIndex[entry.index]).filter(Boolean);
-            return { frames: orderedFrames, outputTimestamps };
-        }
-        frames.sort((a, b) => a.index - b.index);
-        return {
-            frames: frames.map(entry => entry.bitmap),
-            outputTimestamps
-        };
-    }
-
-    let decodeResult = await decodePass(captureAll);
-    if (!captureAll && decodeResult && decodeResult.frames.length <= 1 && demuxed.samples.length > 1) {
-        decodeResult = await decodePass(true);
-    }
-    if (!decodeResult.frames || !decodeResult.frames.length) {
-        throw new Error('No frames decoded.');
-    }
-    if (captureAll && demuxed.samples && demuxed.samples.length) {
-        const sampleCount = demuxed.samples.length;
-        const frameCount = decodeResult.frames.length;
-        if (frameCount !== sampleCount) {
-            const sampleTimestamps = demuxed.samples.map(sample => Math.round(Number(sample.timestampUs)));
-            const outputTimestamps = decodeResult.outputTimestamps || [];
-            const sampleUnique = new Set(sampleTimestamps).size;
-            const outputUnique = new Set(outputTimestamps).size;
-            const sampleDuplicates = sampleCount - sampleUnique;
-            const outputDuplicates = outputTimestamps.length - outputUnique;
-            const sampleHead = sampleTimestamps.slice(0, 5);
-            const sampleTail = sampleTimestamps.slice(-5);
-            const outputHead = outputTimestamps.slice(0, 5);
-            const outputTail = outputTimestamps.slice(-5);
-            console.warn('[Decode] Frame count mismatch', {
-                samples: sampleCount,
-                decoded: frameCount,
-                sampleDuplicates,
-                outputDuplicates,
-                sampleHead,
-                sampleTail,
-                outputHead,
-                outputTail
-            });
-        }
-    }
-    return {
-        frames: decodeResult.frames,
-        expectedFrames,
-        width: outputWidth || demuxed.width,
-        height: outputHeight || demuxed.height,
-        duration: demuxed.duration
-    };
-}
-
 async function extractFramesWithMeta(videoFile, options = {}) {
     const demuxed = options.demuxed || await demuxVideoFile(videoFile);
     const inferredFps = estimateFps(demuxed);
     const duration = demuxed && demuxed.duration ? demuxed.duration : 0;
     const bitrate = estimateBitrate(videoFile.size, duration);
     const fpsForDecode = inferredFps || options.fallbackFps || 30;
-    const result = options.useSeeking === 'smart'
-        ? await extractFramesWithSmartSeeking(videoFile, demuxed, { ...options, fallbackFps: fpsForDecode })
-        : options.useSeeking
-            ? await extractFramesWithSeeking(videoFile, demuxed, { ...options, fallbackFps: fpsForDecode })
-            : options.usePlayback
-                ? await extractFramesWithPlayback(videoFile, demuxed, { ...options, fallbackFps: fpsForDecode })
-                : await decodeFramesFromDemux(demuxed, fpsForDecode, options);
-    if (options.checkDuplicates) {
-        const dupes = await detectDuplicateFrames(result.frames, options.duplicateOptions || {});
-        if (dupes) {
-            console.warn('[Decode] Duplicate frame check', dupes);
-        }
-    }
+    const result = await extractFramesWithPlayback(videoFile, demuxed, { ...options, fallbackFps: fpsForDecode });
     return {
         ...result,
         demuxed,

@@ -339,6 +339,10 @@
             border-radius: 8px;
         }
 
+        .frame-viewer > :last-child {
+            margin-bottom: 0;
+        }
+
         .frame-canvas {
             width: 100%;
             max-width: 100%;
@@ -357,21 +361,165 @@
             flex-wrap: wrap;
         }
 
-        .frame-controls input[type="range"] {
-            width: 100%;
+        .edge-controls {
+            justify-content: space-between;
+            gap: 8px;
         }
 
-        .frame-viewer input[type="range"] {
-            width: 100%;
-            display: block;
+        .edge-controls > * {
+            flex: 0 0 auto;
         }
 
-        .frame-actions {
+        .frame-controls .secondary {
+            min-width: 56px;
+            height: 44px;
+        }
+
+        .frame-count {
+            min-width: 90px;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .frame-range-row {
+            margin-top: 8px;
+        }
+
+        .scrubber {
+            position: relative;
+            --track-height: 32px;
+            --edge-width: 32px;
+            --arrow-size: 14px;
+            height: var(--track-height);
+        }
+
+        .scrubber-track {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            height: var(--track-height);
+            background: #e0e0e0;
+            border-radius: 0;
+        }
+
+        .scrubber-fill {
+            position: absolute;
+            height: 100%;
+            background: #00bcd4;
+            border-radius: 0;
+        }
+
+        .scrubber-handle {
+            position: absolute;
+            pointer-events: auto;
+        }
+
+        .scrubber-handle.start,
+        .scrubber-handle.end {
+            bottom: 0;
+            height: var(--track-height);
+            width: var(--edge-width);
+        }
+
+        .scrubber-handle.start { transform: translateX(0); }
+        .scrubber-handle.end { transform: translateX(-100%); }
+
+        .scrubber-handle.start::after,
+        .scrubber-handle.end::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            width: 0;
+            height: 0;
+            border-top: var(--arrow-size) solid transparent;
+            border-bottom: var(--arrow-size) solid transparent;
+        }
+
+        .scrubber-handle.start::after {
+            left: 0;
+            border-right: 0;
+            border-left: var(--arrow-size) solid #004494;
+            transform: translateY(-50%);
+        }
+
+        .scrubber-handle.end::after {
+            right: 0;
+            border-left: 0;
+            border-right: var(--arrow-size) solid #004494;
+            transform: translateY(-50%);
+        }
+
+        .scrubber-playline {
+            position: absolute;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            background: #ffb74d;
+            transform: translateX(-1px);
+        }
+
+        @media (max-width: 768px) {
+            .scrubber {
+                --track-height: 36px;
+                --edge-width: 40px;
+                --arrow-size: 16px;
+            }
+        }
+
+        .frame-controls input[type="number"] {
+            width: 90px;
+            height: 44px;
+            text-align: center;
+        }
+
+        .frame-controls input[type="number"]:first-child {
+            margin-left: 0;
+        }
+
+        .frame-controls input[type="number"]:last-child {
+            margin-right: 0;
+        }
+
+        .preview-meta {
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .preview-scrub-row {
             display: flex;
             gap: 8px;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .preview-scrub-row input[type="range"] {
+            flex: 1;
+        }
+
+        .preview-scrub-row .primary {
+            min-width: 56px;
+            height: 44px;
+        }
+
+        .crop-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
             justify-content: center;
-            margin-top: 8px;
+            margin-top: 10px;
             flex-wrap: wrap;
+        }
+
+        .crop-row label {
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .crop-row input[type="number"] {
+            width: 70px;
+            padding: 6px;
         }
     </style>
 </head>
@@ -395,8 +543,8 @@
         <div class="clip-list" id="clipList"></div>
 
         <div class="preview" id="preview" style="display:none;">
-            <div style="margin-bottom:8px; font-size:13px; color:#666;">
-                Preview Frame <span id="globalPreviewCounter">0 / 0</span>
+            <div class="preview-meta">
+                Frame <span id="globalPreviewCounter">0 / 0</span>
             </div>
             <div class="preview-stage" id="previewStage">
                 <canvas id="globalPreviewCanvas" class="frame-canvas"></canvas>
@@ -411,42 +559,37 @@
                     <div class="crop-handle edge-left" data-handle="l"></div>
                 </div>
             </div>
-            <input type="range" id="globalPreviewScrubber" min="0" max="0" value="0" style="margin-top:10px; width:100%;">
-            <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin-top:10px; flex-wrap:wrap;">
-                <label>Crop Top</label>
-                <input type="number" id="cropTopInput" min="0" value="0">
-                <label>Crop Bottom</label>
-                <input type="number" id="cropBottomInput" min="0" value="0">
-                <label>Crop Left</label>
-                <input type="number" id="cropLeftInput" min="0" value="0">
-                <label>Crop Right</label>
-                <input type="number" id="cropRightInput" min="0" value="0">
+            <div class="preview-scrub-row">
+                <button class="primary" id="globalPreviewPlayBtn">▶</button>
+                <input type="range" id="globalPreviewScrubber" min="0" max="0" value="0">
             </div>
-            <div style="display:flex; justify-content:center; margin-top:10px;">
-                <button class="primary" id="globalPreviewPlayBtn">Play</button>
+            <div class="crop-row">
+                <label>▼</label>
+                <input type="number" id="cropTopInput" min="0" value="0">
+                <label>▲</label>
+                <input type="number" id="cropBottomInput" min="0" value="0">
+                <label>►</label>
+                <input type="number" id="cropLeftInput" min="0" value="0">
+                <label>◄</label>
+                <input type="number" id="cropRightInput" min="0" value="0">
             </div>
         </div>
 
         <div class="controls" id="downloadControls" style="margin-top:15px; display:none;">
             <div class="control-row">
-                <label for="fpsSelector">Output FPS:</label>
+                <label for="fpsSelector">FPS:</label>
                 <select id="fpsSelector">
-                    <option value="16" selected>16 fps</option>
-                    <option value="24">24 fps</option>
-                    <option value="30">30 fps</option>
+                    <option value="16" selected>16</option>
+                    <option value="24">24</option>
+                    <option value="30">30</option>
                 </select>
                 <label for="bitrateSelector">Bitrate:</label>
                 <select id="bitrateSelector">
-                    <option value="2000000">2 Mbps</option>
-                    <option value="4000000">4 Mbps</option>
-                    <option value="6000000" selected>6 Mbps</option>
-                    <option value="8000000">8 Mbps</option>
-                    <option value="12000000">12 Mbps</option>
-                </select>
-                <label for="fitSelector">Scaling:</label>
-                <select id="fitSelector">
-                    <option value="contain" selected>Contain (black bars)</option>
-                    <option value="cover">Cover (crop)</option>
+                    <option value="2000000">2</option>
+                    <option value="4000000">4</option>
+                    <option value="6000000" selected>6</option>
+                    <option value="8000000">8</option>
+                    <option value="12000000">12</option>
                 </select>
             </div>
             <div class="control-row">
@@ -466,7 +609,6 @@
         const clipList = document.getElementById('clipList');
         const fpsSelector = document.getElementById('fpsSelector');
         const bitrateSelector = document.getElementById('bitrateSelector');
-        const fitSelector = document.getElementById('fitSelector');
         const mergeBtnBottom = document.getElementById('mergeBtnBottom');
         const clearBtnBottom = document.getElementById('clearBtnBottom');
         const downloadControls = document.getElementById('downloadControls');
@@ -521,6 +663,11 @@
         cropRightInput.addEventListener('change', () => updateCropFromInputs());
 
         function reset() {
+            clips.forEach(clip => {
+                if (clip.playIntervalId) {
+                    clearInterval(clip.playIntervalId);
+                }
+            });
             clips = [];
             clipList.innerHTML = '';
             preview.style.display = 'none';
@@ -591,7 +738,10 @@
                         endFrame: totalFrames - 1,
                         frames: null,
                         viewerOpen: false,
-                        currentFrame: 0
+                        currentFrame: 0,
+                        activeHandle: 'start',
+                        isPlaying: false,
+                        playIntervalId: null
                     });
                 } catch (error) {
                     console.error('Failed to parse', file.name, error);
@@ -645,17 +795,21 @@
                 const viewerHtml = clip.viewerOpen ? `
                     <div class="frame-viewer">
                         <canvas class="frame-canvas" id="frameCanvas-${clip.id}"></canvas>
-                        <div class="frame-controls">
-                            <button class="secondary" data-action="frame-back">‹</button>
-                            <div id="frameCounter-${clip.id}">Frame ${clip.currentFrame + 1} / ${clip.totalFrames}</div>
-                            <button class="secondary" data-action="frame-forward">›</button>
+                        <div class="frame-controls edge-controls">
+                            <input type="number" id="rangeStartInput-${clip.id}" data-field="start" min="1" max="${clip.totalFrames}" value="${clip.startFrame + 1}">
+                            <button class="secondary" data-action="play-range">${clip.isPlaying ? '⏸' : '▶'}</button>
+                            <div class="frame-count" id="frameCounter-${clip.id}">${clip.currentFrame + 1}</div>
+                            <input type="number" id="rangeEndInput-${clip.id}" data-field="end" min="1" max="${clip.totalFrames}" value="${clip.endFrame + 1}">
                         </div>
-                        <input type="range" id="frameScrubber-${clip.id}" min="0" max="${clip.totalFrames - 1}" value="${clip.currentFrame}">
-                        <div class="frame-actions">
-                            <button class="secondary" data-action="set-start">Set Start</button>
-                            <input type="number" data-field="start" min="1" max="${clip.totalFrames}" value="${clip.startFrame + 1}">
-                            <button class="secondary" data-action="set-end">Set End</button>
-                            <input type="number" data-field="end" min="1" max="${clip.totalFrames}" value="${clip.endFrame + 1}">
+                        <div class="frame-range-row">
+                            <div class="scrubber">
+                                <div class="scrubber-track" id="scrubberTrack-${clip.id}">
+                                    <div class="scrubber-fill" id="scrubberFill-${clip.id}"></div>
+                                    <div class="scrubber-handle start" id="scrubberStart-${clip.id}" data-handle="start"></div>
+                                    <div class="scrubber-handle end" id="scrubberEnd-${clip.id}" data-handle="end"></div>
+                                    <div class="scrubber-playline" id="scrubberCurrent-${clip.id}"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 ` : '';
@@ -663,7 +817,7 @@
                     <div class="clip-header">
                         <div class="clip-title">${clip.name}</div>
                         <div>
-                            <button class="secondary" data-action="split">/</button>
+                            <button class="secondary" data-action="copy">Copy</button>
                             <button class="secondary" data-action="up">↑</button>
                             <button class="secondary" data-action="down">↓</button>
                             <button class="secondary" data-action="remove">✕</button>
@@ -695,77 +849,38 @@
                         return;
                     }
                     if (action === 'remove') {
+                        if (clip.playIntervalId) {
+                            clearInterval(clip.playIntervalId);
+                            clip.playIntervalId = null;
+                            clip.isPlaying = false;
+                        }
                         clips.splice(index, 1);
                         renderClips();
                         syncCropToOutput();
                         return;
                     }
-                    if (action === 'frame-back' && clip.frames) {
+                    if (action === 'play-range' && clip.frames) {
                         previewPlayback.stop();
-                        clip.currentFrame = Math.max(0, clip.currentFrame - 1);
-                        drawClipFrame(clip);
-                        return;
-                    }
-                    if (action === 'frame-forward' && clip.frames) {
-                        previewPlayback.stop();
-                        clip.currentFrame = Math.min(clip.totalFrames - 1, clip.currentFrame + 1);
-                        drawClipFrame(clip);
-                        return;
-                    }
-                    if (action === 'set-start') {
-                        previewPlayback.stop();
-                        clip.startFrame = clip.currentFrame;
-                        if (clip.startFrame > clip.endFrame) clip.endFrame = clip.startFrame;
+                        toggleClipRangePlayback(clip);
                         renderClips();
                         return;
                     }
-                    if (action === 'set-end') {
-                        previewPlayback.stop();
-                        clip.endFrame = clip.currentFrame;
-                        if (clip.endFrame < clip.startFrame) clip.startFrame = clip.endFrame;
-                        renderClips();
-                        return;
-                    }
-                    if (action === 'split') {
+                    if (action === 'copy') {
                         previewPlayback.stop();
                         if (!clip.frames || !clip.frames.length) {
-                            setStatus('Load frames before splitting.');
+                            setStatus('Load frames before copying.');
                             return;
                         }
-                        const splitFrame = clip.currentFrame;
-                        if (splitFrame < clip.startFrame) {
-                            setStatus('Split point must be within the current range.');
-                            return;
-                        }
-                        if (splitFrame >= clip.endFrame) {
-                            setStatus('Split point must be before the end of the range.');
-                            return;
-                        }
-                        const rangeStart = clip.startFrame;
-                        const rangeEnd = clip.endFrame;
-                        const firstFrames = clip.frames.slice(rangeStart, splitFrame + 1);
-                        const secondFrames = clip.frames.slice(splitFrame + 1, rangeEnd + 1);
-                        const firstPart = {
+                        const copied = {
                             ...clip,
                             id: Math.random().toString(36).slice(2),
-                            name: `${clip.name} (Part 1)`,
-                            frames: firstFrames,
-                            totalFrames: firstFrames.length,
-                            startFrame: 0,
-                            endFrame: Math.max(0, firstFrames.length - 1),
-                            currentFrame: Math.min(splitFrame - rangeStart, Math.max(0, firstFrames.length - 1))
+                            name: `${clip.name} (Copy)`,
+                            currentFrame: clip.startFrame,
+                            activeHandle: 'start',
+                            isPlaying: false,
+                            playIntervalId: null
                         };
-                        const secondPart = {
-                            ...clip,
-                            id: Math.random().toString(36).slice(2),
-                            name: `${clip.name} (Part 2)`,
-                            frames: secondFrames,
-                            totalFrames: secondFrames.length,
-                            startFrame: 0,
-                            endFrame: Math.max(0, secondFrames.length - 1),
-                            currentFrame: 0
-                        };
-                        clips.splice(index, 1, firstPart, secondPart);
+                        clips.splice(index + 1, 0, copied);
                         renderClips();
                         return;
                     }
@@ -778,19 +893,47 @@
                         if (field === 'start') {
                             clip.startFrame = Math.max(0, Math.min(value - 1, clip.totalFrames - 1));
                             if (clip.startFrame > clip.endFrame) clip.endFrame = clip.startFrame;
+                            clip.currentFrame = clip.startFrame;
+                            clip.activeHandle = 'start';
                         } else {
                             clip.endFrame = Math.max(0, Math.min(value - 1, clip.totalFrames - 1));
                             if (clip.endFrame < clip.startFrame) clip.startFrame = clip.endFrame;
+                            clip.currentFrame = clip.endFrame;
+                            clip.activeHandle = 'end';
                         }
-                        renderClips();
+                        if (clip.currentFrame < clip.startFrame) clip.currentFrame = clip.startFrame;
+                        if (clip.currentFrame > clip.endFrame) clip.currentFrame = clip.endFrame;
+                        drawClipFrame(clip);
+                        refreshGlobalPreviewForClipChange();
                     });
                 });
-                const scrubber = card.querySelector(`#frameScrubber-${clip.id}`);
-                if (scrubber) {
-                    scrubber.addEventListener('input', () => {
+                const scrubberTrack = card.querySelector(`#scrubberTrack-${clip.id}`);
+                const startHandle = card.querySelector(`#scrubberStart-${clip.id}`);
+                const endHandle = card.querySelector(`#scrubberEnd-${clip.id}`);
+                if (scrubberTrack && startHandle && endHandle) {
+                    const onPointerDown = (e) => {
+                        const handle = e.target.dataset.handle;
+                        if (!handle) return;
                         previewPlayback.stop();
-                        clip.currentFrame = parseInt(scrubber.value, 10) || 0;
-                        drawClipFrame(clip);
+                        if (clip.playIntervalId) {
+                            clearInterval(clip.playIntervalId);
+                            clip.playIntervalId = null;
+                            clip.isPlaying = false;
+                        }
+                        const rect = scrubberTrack.getBoundingClientRect();
+                        scrubberDragState = {
+                            clip,
+                            handle,
+                            rect
+                        };
+                        if (e.pointerId !== undefined) {
+                            scrubberTrack.setPointerCapture(e.pointerId);
+                        }
+                        updateScrubberFromPointer(e);
+                        refreshGlobalPreviewForClipChange();
+                    };
+                    [startHandle, endHandle].forEach(handleEl => {
+                        handleEl.addEventListener('pointerdown', onPointerDown);
                     });
                 }
                 clipList.appendChild(card);
@@ -818,7 +961,6 @@
             try {
                 const result = await extractFramesWithMeta(clip.file, {
                     captureAll: true,
-                    checkDuplicates: true,
                     usePlayback: true,
                     playbackRate: 1.0,
                     demuxed: demuxed,
@@ -840,6 +982,9 @@
                 clip.totalFrames = result.frames.length || clip.totalFrames;
                 clip.endFrame = Math.min(clip.endFrame, clip.totalFrames - 1);
                 clip.startFrame = Math.min(clip.startFrame, clip.totalFrames - 1);
+                if (!clip.activeHandle) {
+                    clip.activeHandle = 'start';
+                }
             } catch (error) {
                 console.error('Decode failed for clip', error);
                 setStatus('No frames decoded for this clip.');
@@ -849,18 +994,130 @@
             }
         }
 
+        let scrubberDragState = null;
+
+        function updateScrubberFromPointer(e) {
+            if (!scrubberDragState) return;
+            const { clip, handle, rect } = scrubberDragState;
+            const maxIndex = Math.max(1, clip.totalFrames - 1);
+            const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const index = Math.round(pct * maxIndex);
+            if (handle === 'start') {
+                clip.startFrame = Math.min(index, clip.endFrame);
+                clip.currentFrame = clip.startFrame;
+                clip.activeHandle = 'start';
+            } else if (handle === 'end') {
+                clip.endFrame = Math.max(index, clip.startFrame);
+                clip.currentFrame = clip.endFrame;
+                clip.activeHandle = 'end';
+            } else {
+                const clamped = Math.max(clip.startFrame, Math.min(index, clip.endFrame));
+                clip.currentFrame = clamped;
+            }
+            drawClipFrame(clip);
+            refreshGlobalPreviewForClipChange();
+        }
+
+        function endScrubberDrag() {
+            scrubberDragState = null;
+        }
+
+        window.addEventListener('pointermove', (e) => updateScrubberFromPointer(e));
+        window.addEventListener('pointerup', () => endScrubberDrag());
+        window.addEventListener('pointercancel', () => endScrubberDrag());
+        window.addEventListener('resize', () => {
+            clips.forEach(clip => {
+                if (clip.viewerOpen && clip.frames && clip.frames.length) {
+                    drawClipFrame(clip);
+                }
+            });
+            refreshGlobalPreviewForClipChange();
+        });
+
         function drawClipFrame(clip) {
             const canvas = document.getElementById(`frameCanvas-${clip.id}`);
-            const scrubber = document.getElementById(`frameScrubber-${clip.id}`);
             const counter = document.getElementById(`frameCounter-${clip.id}`);
+            const rangeStartInput = document.getElementById(`rangeStartInput-${clip.id}`);
+            const rangeEndInput = document.getElementById(`rangeEndInput-${clip.id}`);
+            const scrubberTrack = document.getElementById(`scrubberTrack-${clip.id}`);
+            const scrubberFill = document.getElementById(`scrubberFill-${clip.id}`);
+            const scrubberStart = document.getElementById(`scrubberStart-${clip.id}`);
+            const scrubberEnd = document.getElementById(`scrubberEnd-${clip.id}`);
+            const scrubberCurrent = document.getElementById(`scrubberCurrent-${clip.id}`);
             if (!canvas || !clip.frames || !clip.frames.length) return;
             const ctx = canvas.getContext('2d');
             const frame = clip.frames[clip.currentFrame];
             canvas.width = frame.width;
             canvas.height = frame.height;
             ctx.drawImage(frame, 0, 0);
-            if (scrubber) scrubber.value = clip.currentFrame;
-            if (counter) counter.textContent = `Frame ${clip.currentFrame + 1} / ${clip.totalFrames}`;
+            if (counter) counter.textContent = `${clip.currentFrame + 1}`;
+            if (rangeStartInput) rangeStartInput.value = String(clip.startFrame + 1);
+            if (rangeEndInput) rangeEndInput.value = String(clip.endFrame + 1);
+            const maxIndex = Math.max(1, clip.totalFrames - 1);
+            const startPct = (clip.startFrame / maxIndex) * 100;
+            const endPct = (clip.endFrame / maxIndex) * 100;
+            const currentPct = (clip.currentFrame / maxIndex) * 100;
+            const trackWidth = scrubberTrack ? scrubberTrack.clientWidth : 0;
+            if (trackWidth > 0) {
+                const startX = (startPct / 100) * trackWidth;
+                const endX = (endPct / 100) * trackWidth;
+                const currentX = (currentPct / 100) * trackWidth;
+                if (scrubberFill) {
+                    scrubberFill.style.left = `${startX}px`;
+                    scrubberFill.style.width = `${Math.max(1, endX - startX)}px`;
+                }
+                if (scrubberStart) scrubberStart.style.left = `${startX}px`;
+                if (scrubberEnd) scrubberEnd.style.left = `${endX}px`;
+                if (scrubberCurrent) scrubberCurrent.style.left = `${currentX}px`;
+            } else {
+                if (scrubberFill) {
+                    scrubberFill.style.left = `${startPct}%`;
+                    scrubberFill.style.width = `${Math.max(1, endPct - startPct)}%`;
+                }
+                if (scrubberStart) scrubberStart.style.left = `${startPct}%`;
+                if (scrubberEnd) scrubberEnd.style.left = `${endPct}%`;
+                if (scrubberCurrent) scrubberCurrent.style.left = `${currentPct}%`;
+            }
+        }
+
+        function toggleClipRangePlayback(clip) {
+            if (clip.playIntervalId) {
+                clearInterval(clip.playIntervalId);
+                clip.playIntervalId = null;
+                clip.isPlaying = false;
+                return;
+            }
+            const fps = clip.nativeFps || parseInt(fpsSelector.value, 10) || 16;
+            const intervalMs = 1000 / fps;
+            clip.isPlaying = true;
+            if (clip.currentFrame < clip.startFrame || clip.currentFrame > clip.endFrame) {
+                clip.currentFrame = clip.startFrame;
+            }
+            clip.playIntervalId = setInterval(() => {
+                if (!clip.frames || !clip.frames.length) return;
+                clip.currentFrame += 1;
+                if (clip.currentFrame > clip.endFrame) {
+                    clip.currentFrame = clip.startFrame;
+                }
+                drawClipFrame(clip);
+            }, intervalMs);
+        }
+
+        function refreshGlobalPreviewForClipChange() {
+            const merged = getMergedSegments();
+            if (!merged.totalFrames) {
+                preview.style.display = 'none';
+                globalPreviewCounter.textContent = '0 / 0';
+                globalPreviewScrubber.value = '0';
+                globalPreviewScrubber.max = '0';
+                previewPlayback.stop();
+                return;
+            }
+            preview.style.display = 'block';
+            const current = Math.min(parseInt(globalPreviewScrubber.value, 10) || 0, merged.totalFrames - 1);
+            globalPreviewScrubber.max = String(merged.totalFrames - 1);
+            globalPreviewScrubber.value = String(current);
+            drawMergedFrame(current);
         }
 
         function refreshGlobalPreview() {
@@ -936,7 +1193,6 @@
             if (!merged.totalFrames) return;
             const { outputWidth, outputHeight } = getOutputDimensions();
             if (!outputWidth || !outputHeight) return;
-            const fitMode = fitSelector.value || 'contain';
             const clamped = Math.max(0, Math.min(globalFrameIndex, merged.totalFrames - 1));
             let selected = null;
             for (const segment of merged.segments) {
@@ -953,7 +1209,7 @@
             const ctx = globalPreviewCanvas.getContext('2d');
             globalPreviewCanvas.width = outputWidth;
             globalPreviewCanvas.height = outputHeight;
-            drawFrameToCanvas(ctx, frame, outputWidth, outputHeight, fitMode);
+            drawFrameToCanvas(ctx, frame, outputWidth, outputHeight);
             globalPreviewCounter.textContent = `${clamped + 1} / ${merged.totalFrames}`;
             globalPreviewScrubber.value = String(clamped);
             ensureCropRect(outputWidth, outputHeight);
@@ -965,8 +1221,8 @@
             getCurrentFrame: () => parseInt(globalPreviewScrubber.value, 10) || 0,
             drawFrame: (index) => drawMergedFrame(index),
             getFps: () => parseInt(fpsSelector.value, 10) || 16,
-            onStart: () => { globalPreviewPlayBtn.textContent = 'Pause'; },
-            onStop: () => { globalPreviewPlayBtn.textContent = 'Play'; }
+            onStart: () => { globalPreviewPlayBtn.textContent = '⏸'; },
+            onStop: () => { globalPreviewPlayBtn.textContent = '▶'; }
         });
 
         let cropRect = null;
@@ -1152,7 +1408,6 @@
             }
             const fps = parseInt(fpsSelector.value, 10) || 16;
             const bitrate = parseInt(bitrateSelector.value, 10) || 6000000;
-            const fitMode = fitSelector.value || 'contain';
 
             const { outputWidth, outputHeight } = getOutputDimensions();
             for (const clip of clips) {
@@ -1214,7 +1469,7 @@
                         return segment.clip.frames[localIndex];
                     },
                     drawFrame: (ctx, frame) => {
-                        drawFrameToCanvas(baseCtx, frame, outputWidth, outputHeight, fitMode);
+                        drawFrameToCanvas(baseCtx, frame, outputWidth, outputHeight);
                         ctx.drawImage(
                             baseCanvas,
                             cropRectSafe.x,
@@ -1250,7 +1505,7 @@
             }
         }
 
-        function drawFrameToCanvas(ctx, frame, outW, outH, mode) {
+        function drawFrameToCanvas(ctx, frame, outW, outH) {
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, outW, outH);
             const srcW = frame.width || frame.displayWidth || frame.codedWidth;
@@ -1260,29 +1515,9 @@
                 return;
             }
             const srcRatio = srcW / srcH;
-            const dstRatio = outW / outH;
-            let drawW = outW;
-            let drawH = outH;
-            if (mode === 'cover') {
-                if (srcRatio > dstRatio) {
-                    drawH = outH;
-                    drawW = outH * srcRatio;
-                } else {
-                    drawW = outW;
-                    drawH = outW / srcRatio;
-                }
-            } else {
-                if (srcRatio > dstRatio) {
-                    drawW = outW;
-                    drawH = outW / srcRatio;
-                } else {
-                    drawH = outH;
-                    drawW = outH * srcRatio;
-                }
-            }
-            const x = (outW - drawW) / 2;
-            const y = (outH - drawH) / 2;
-            ctx.drawImage(frame, x, y, drawW, drawH);
+            const drawW = outW;
+            const drawH = outW / srcRatio;
+            ctx.drawImage(frame, 0, 0, drawW, drawH);
         }
 
     </script>
