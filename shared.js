@@ -1390,7 +1390,7 @@ async function encodeGif(options) {
         height: height,
         dither: dither,
         transparent: transparent,
-        workerScript: 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js'
+        workerScript: 'libs/gif.worker.js'
     });
 
     // Track encoding progress
