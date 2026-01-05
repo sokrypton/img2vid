@@ -819,7 +819,7 @@
                 const result = await extractFramesWithMeta(clip.file, {
                     captureAll: true,
                     checkDuplicates: true,
-                    useSeeking: 'smart',
+                    dedupeFrames: true,
                     demuxed: demuxed,
                     onProgress: ({ decodedFrames, expectedFrames, sampleIndex, totalSamples }) => {
                         const progress = expectedFrames

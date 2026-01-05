@@ -80,6 +80,17 @@ function estimateFps(demuxed) {
     return null;
 }
 
+function hashBitmap(bitmap, size, ctx) {
+    ctx.clearRect(0, 0, size, size);
+    ctx.drawImage(bitmap, 0, 0, size, size);
+    const data = ctx.getImageData(0, 0, size, size).data;
+    let hash = 0;
+    for (let i = 0; i < data.length; i += 4) {
+        hash = (hash + data[i] + data[i + 1] + data[i + 2]) >>> 0;
+    }
+    return hash;
+}
+
 async function detectDuplicateFrames(frames, options = {}) {
     if (!frames || frames.length < 2) return null;
     const sampleCount = Math.min(options.sampleCount || 60, frames.length);
@@ -986,6 +997,7 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
     let outputWidth = demuxed.width || 0;
     let outputHeight = demuxed.height || 0;
     const timestampMode = options.timestampMode || demuxed.timestampMode || 'pts';
+    const effectiveDedupe = options.dedupeFrames && timestampMode !== 'index';
 
     async function decodePass(passCaptureAll) {
         let nextTargetUs = 0;
@@ -997,6 +1009,17 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
         let outputIndex = 0;
         let decoderError = null;
 
+        let hashCanvas = null;
+        let hashCtx = null;
+        let lastHash = null;
+        const hashSize = options.dedupeSampleSize || 16;
+        if (effectiveDedupe) {
+            hashCanvas = document.createElement('canvas');
+            hashCanvas.width = hashSize;
+            hashCanvas.height = hashSize;
+            hashCtx = hashCanvas.getContext('2d', { willReadFrequently: true });
+        }
+
         const decoder = new VideoDecoder({
             output: (frame) => {
                 const timestampUs = frame.timestamp;
@@ -1005,11 +1028,24 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
                     outputTimestamps.push(timestampUs);
                     const promise = chain = chain.then(() => (
                         createImageBitmap(frame).then(bitmap => {
-                            if (timestampMode === 'index') {
-                                const frameIndex = Math.round(timestampUs);
-                                framesByIndex[frameIndex] = bitmap;
+                            let keep = true;
+                            if (effectiveDedupe) {
+                                const hash = hashBitmap(bitmap, hashSize, hashCtx);
+                                if (hash === lastHash) {
+                                    keep = false;
+                                } else {
+                                    lastHash = hash;
+                                }
+                            }
+                            if (keep) {
+                                if (timestampMode === 'index') {
+                                    const frameIndex = Math.round(timestampUs);
+                                    framesByIndex[frameIndex] = bitmap;
+                                } else {
+                                    frames.push({ index: slot, bitmap });
+                                }
                             } else {
-                                frames.push({ index: slot, bitmap });
+                                bitmap.close();
                             }
                             outputWidth = outputWidth || frame.displayWidth || frame.codedWidth;
                             outputHeight = outputHeight || frame.displayHeight || frame.codedHeight;
