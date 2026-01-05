@@ -390,11 +390,14 @@
             height: 100%;
             background: #00bcd4;
             border-radius: 0;
+            will-change: left, width;
         }
 
         .scrubber-handle {
             position: absolute;
             pointer-events: auto;
+            will-change: left;
+            touch-action: none;
         }
 
         .scrubber-hit {
@@ -404,6 +407,8 @@
             transform: translateX(-50%);
             pointer-events: auto;
             background: transparent;
+            will-change: left;
+            touch-action: none;
         }
 
         .scrubber-handle.start,
@@ -448,6 +453,7 @@
             height: 100%;
             background: #ffb74d;
             transform: translateX(-1px);
+            will-change: left;
         }
 
         @media (max-width: 768px) {
@@ -1062,7 +1068,6 @@
             const counter = document.getElementById(`frameCounter-${clip.id}`);
             const rangeStartInput = document.getElementById(`rangeStartInput-${clip.id}`);
             const rangeEndInput = document.getElementById(`rangeEndInput-${clip.id}`);
-            const scrubberTrack = document.getElementById(`scrubberTrack-${clip.id}`);
             const scrubberFill = document.getElementById(`scrubberFill-${clip.id}`);
             const scrubberStart = document.getElementById(`scrubberStart-${clip.id}`);
             const scrubberEnd = document.getElementById(`scrubberEnd-${clip.id}`);
@@ -1072,41 +1077,33 @@
             if (!canvas || !clip.frames || !clip.frames.length) return;
             const ctx = canvas.getContext('2d');
             const frame = clip.frames[clip.currentFrame];
-            canvas.width = frame.width;
-            canvas.height = frame.height;
+
+            // Only resize canvas if dimensions changed
+            if (canvas.width !== frame.width || canvas.height !== frame.height) {
+                canvas.width = frame.width;
+                canvas.height = frame.height;
+            }
             ctx.drawImage(frame, 0, 0);
+
             if (counter) counter.textContent = `${clip.currentFrame + 1}`;
             if (rangeStartInput) rangeStartInput.value = String(clip.startFrame + 1);
             if (rangeEndInput) rangeEndInput.value = String(clip.endFrame + 1);
+
             const maxIndex = Math.max(1, clip.totalFrames - 1);
             const startPct = (clip.startFrame / maxIndex) * 100;
             const endPct = (clip.endFrame / maxIndex) * 100;
             const currentPct = (clip.currentFrame / maxIndex) * 100;
-            const trackWidth = scrubberTrack ? scrubberTrack.clientWidth : 0;
-            if (trackWidth > 0) {
-                const startX = (startPct / 100) * trackWidth;
-                const endX = (endPct / 100) * trackWidth;
-                const currentX = (currentPct / 100) * trackWidth;
-                if (scrubberFill) {
-                    scrubberFill.style.left = `${startX}px`;
-                    scrubberFill.style.width = `${Math.max(1, endX - startX)}px`;
-                }
-                if (scrubberStart) scrubberStart.style.left = `${startX}px`;
-                if (scrubberEnd) scrubberEnd.style.left = `${endX}px`;
-                if (scrubberHitStart) scrubberHitStart.style.left = `${startX}px`;
-                if (scrubberHitEnd) scrubberHitEnd.style.left = `${endX}px`;
-                if (scrubberCurrent) scrubberCurrent.style.left = `${currentX}px`;
-            } else {
-                if (scrubberFill) {
-                    scrubberFill.style.left = `${startPct}%`;
-                    scrubberFill.style.width = `${Math.max(1, endPct - startPct)}%`;
-                }
-                if (scrubberStart) scrubberStart.style.left = `${startPct}%`;
-                if (scrubberEnd) scrubberEnd.style.left = `${endPct}%`;
-                if (scrubberHitStart) scrubberHitStart.style.left = `${startPct}%`;
-                if (scrubberHitEnd) scrubberHitEnd.style.left = `${endPct}%`;
-                if (scrubberCurrent) scrubberCurrent.style.left = `${currentPct}%`;
+
+            // Use percentage-based positioning to avoid layout thrashing
+            if (scrubberFill) {
+                scrubberFill.style.left = `${startPct}%`;
+                scrubberFill.style.width = `${Math.max(1, endPct - startPct)}%`;
             }
+            if (scrubberStart) scrubberStart.style.left = `${startPct}%`;
+            if (scrubberEnd) scrubberEnd.style.left = `${endPct}%`;
+            if (scrubberHitStart) scrubberHitStart.style.left = `${startPct}%`;
+            if (scrubberHitEnd) scrubberHitEnd.style.left = `${endPct}%`;
+            if (scrubberCurrent) scrubberCurrent.style.left = `${currentPct}%`;
         }
 
         function toggleClipRangePlayback(clip) {
