@@ -821,6 +821,7 @@ No setup, no internet, no dependencies needed!
             try {
                 result = await extractFramesWithMeta(videoFile, {
                     captureAll: true,
+                    checkDuplicates: true,
                     demuxed: demuxedCacheFile === videoFile ? demuxedCache : null,
                     onProgress: ({ decodedFrames, expectedFrames, sampleIndex, totalSamples }) => {
                         const progress = expectedFrames

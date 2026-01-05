@@ -80,6 +80,49 @@ function estimateFps(demuxed) {
     return null;
 }
 
+async function detectDuplicateFrames(frames, options = {}) {
+    if (!frames || frames.length < 2) return null;
+    const sampleCount = Math.min(options.sampleCount || 20, frames.length);
+    const size = options.sampleSize || 16;
+    const startIndex = Math.max(0, frames.length - sampleCount);
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const hashes = [];
+    for (let i = startIndex; i < frames.length; i++) {
+        const frame = frames[i];
+        ctx.clearRect(0, 0, size, size);
+        ctx.drawImage(frame, 0, 0, size, size);
+        const data = ctx.getImageData(0, 0, size, size).data;
+        let hash = 0;
+        for (let j = 0; j < data.length; j += 4) {
+            hash = (hash + data[j] + data[j + 1] + data[j + 2]) >>> 0;
+        }
+        hashes.push({ index: i, hash });
+    }
+    let duplicates = 0;
+    let consecutive = 0;
+    const seen = new Map();
+    for (let i = 0; i < hashes.length; i++) {
+        const entry = hashes[i];
+        if (seen.has(entry.hash)) {
+            duplicates += 1;
+        } else {
+            seen.set(entry.hash, entry.index);
+        }
+        if (i > 0 && entry.hash === hashes[i - 1].hash) {
+            consecutive += 1;
+        }
+    }
+    return {
+        sampleCount,
+        startIndex,
+        duplicates,
+        consecutive
+    };
+}
+
 function parseMp4(buffer) {
     const view = new DataView(buffer);
     const topLevel = [];
@@ -937,6 +980,12 @@ async function extractFramesWithMeta(videoFile, options = {}) {
     const bitrate = estimateBitrate(videoFile.size, duration);
     const fpsForDecode = inferredFps || options.fallbackFps || 30;
     const result = await decodeFramesFromDemux(demuxed, fpsForDecode, options);
+    if (options.checkDuplicates) {
+        const dupes = await detectDuplicateFrames(result.frames, options.duplicateOptions || {});
+        if (dupes) {
+            console.warn('[Decode] Duplicate frame check', dupes);
+        }
+    }
     return {
         ...result,
         demuxed,
