@@ -791,16 +791,18 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
 
     async function decodePass(passCaptureAll) {
         let nextTargetUs = 0;
-        const frames = [];
+        const framesByIndex = [];
         const pending = [];
+        let outputIndex = 0;
         let decoderError = null;
 
         const decoder = new VideoDecoder({
             output: (frame) => {
                 const timestampUs = frame.timestamp;
                 if (passCaptureAll || (timestampUs + targetIntervalUs / 2 >= nextTargetUs)) {
+                    const slot = outputIndex++;
                     const promise = createImageBitmap(frame).then(bitmap => {
-                        frames.push(bitmap);
+                        framesByIndex[slot] = bitmap;
                         outputWidth = outputWidth || frame.displayWidth || frame.codedWidth;
                         outputHeight = outputHeight || frame.displayHeight || frame.codedHeight;
                     }).finally(() => frame.close());
@@ -868,7 +870,7 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
         await decoder.flush();
         await Promise.all(pending);
         decoder.close();
-        return frames;
+        return framesByIndex.filter(Boolean);
     }
 
     let frames = await decodePass(captureAll);
