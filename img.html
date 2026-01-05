@@ -416,7 +416,15 @@ No setup, no internet, no dependencies needed!
             </div>
         </div>
         <div class="error-console" id="errorConsole" style="display:none;"></div>
-        
+
+        <div id="webCodecsSettings" style="display:none; margin-bottom: 15px;">
+            <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" id="useWebCodecsToggleImg" style="margin-right: 8px; width: 18px; height: 18px;">
+                <span style="font-weight: bold;">Use WebCodecs for extraction</span>
+            </label>
+            <div style="font-size: 11px; color: #666; margin-top: 2px; margin-left: 26px;" id="webCodecsSupportImg"></div>
+        </div>
+
         <div id="imageSettings" style="display:none; margin-bottom: 15px;">
             <label for="aspectRatioInput">Target width (px): </label>
             <input type="number" id="aspectRatioInput" value="1080" min="100" max="4000" style="width: 80px; padding: 5px;">
@@ -610,6 +618,26 @@ No setup, no internet, no dependencies needed!
             if (e.target.files[0]) loadFile(e.target.files[0]);
         });
 
+        // WebCodecs feature detection and localStorage persistence
+        const useWebCodecsToggleImg = document.getElementById('useWebCodecsToggleImg');
+        const webCodecsSupportImg = document.getElementById('webCodecsSupportImg');
+
+        if ('VideoDecoder' in window) {
+            webCodecsSupportImg.textContent = '✓ WebCodecs API supported';
+            webCodecsSupportImg.style.color = '#28a745';
+        } else {
+            webCodecsSupportImg.textContent = '✗ Not supported (will use playback)';
+            webCodecsSupportImg.style.color = '#dc3545';
+            useWebCodecsToggleImg.disabled = true;
+        }
+
+        const savedPrefImg = localStorage.getItem('useWebCodecsImg');
+        if (savedPrefImg !== null) useWebCodecsToggleImg.checked = savedPrefImg === 'true';
+
+        useWebCodecsToggleImg.addEventListener('change', () => {
+            localStorage.setItem('useWebCodecsImg', useWebCodecsToggleImg.checked);
+        });
+
         function loadFile(file) {
             const isVideo = file.type.startsWith('video/');
             const isImage = file.type.startsWith('image/');
@@ -656,7 +684,8 @@ No setup, no internet, no dependencies needed!
             uploadArea.style.display = 'none';
             imageSettings.style.display = 'none';
             logoHeightSettings.style.display = 'none';
-            
+            webCodecsSettings.style.display = 'none';
+
             // Clear frame cache for new video
             clearFrameCache();
             demuxedCache = null;
@@ -737,6 +766,7 @@ No setup, no internet, no dependencies needed!
             
             videoButtons.style.display = 'flex';
             videoControls.style.display = 'block';
+            webCodecsSettings.style.display = 'block';
             imageSettings.style.display = 'none';
             logoHeightSettings.style.display = 'none';
             info.style.display = 'block';
@@ -821,6 +851,7 @@ No setup, no internet, no dependencies needed!
             try {
                 result = await extractFramesWithMeta(videoFile, {
                     captureAll: true,
+                    useWebCodecs: useWebCodecsToggleImg.checked,
                     usePlayback: true,
                     playbackRate: 1.0,
                     demuxed: demuxedCacheFile === videoFile ? demuxedCache : null,
@@ -836,6 +867,16 @@ No setup, no internet, no dependencies needed!
                         }
                     }
                 });
+
+                // Validation logging
+                console.log('Frame extraction:', {
+                    method: result.extractionMethod || (useWebCodecsToggleImg.checked ? 'WebCodecs' : 'Playback'),
+                    extractedFrames: result.frames.length,
+                    demuxedSamples: result.demuxed.samples.length,
+                    match: result.frames.length === result.demuxed.samples.length ? '✓' : '⚠',
+                    codec: result.demuxed.codec
+                });
+
                 demuxedCache = result.demuxed;
                 demuxedCacheFile = videoFile;
             } catch (error) {
@@ -1099,6 +1140,7 @@ No setup, no internet, no dependencies needed!
                 videoButtons.style.display = 'none';
                 imageButtons.style.display = 'flex';
                 videoControls.style.display = 'none';
+                webCodecsSettings.style.display = 'none';
                 imageSettings.style.display = '';
                 logoHeightSettings.style.display = '';
                 

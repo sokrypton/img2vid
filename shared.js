@@ -815,6 +815,7 @@ async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
     let totalSamples = 0;
     let stopped = false;
     let resolveCapture = null;
+    let skippedPlaybackCount = 0;
 
     function captureFrame() {
         sampleCtx.drawImage(video, 0, 0, sampleSize, sampleSize);
@@ -835,6 +836,8 @@ async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
                 }
                 frames.push(bitmap);
             })();
+        } else {
+            skippedPlaybackCount++;
         }
         return Promise.resolve();
     }
@@ -897,22 +900,272 @@ async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
     await captureFrame();
     video.pause();
     URL.revokeObjectURL(url);
+
+    console.log(`📊 Playback summary: ${frames.length} unique frames captured (${skippedPlaybackCount} duplicates skipped)`);
+
     return { frames, width, height, duration };
 }
 
+async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
+    // 1. Browser support check
+    if (!('VideoDecoder' in window)) {
+        throw new Error('WebCodecs API not supported in this browser');
+    }
+
+    // 2. Validate demuxed data
+    if (!demuxed || !demuxed.samples || !demuxed.samples.length) {
+        throw new Error('No video samples found in demuxed data');
+    }
+
+    console.log('📦 Demuxed data:', {
+        codec: demuxed.codec,
+        width: demuxed.width,
+        height: demuxed.height,
+        samples: demuxed.samples.length,
+        hasDescription: !!demuxed.description
+    });
+
+    // 3. Get dimensions from video element if not available from demuxer
+    let width = demuxed.width;
+    let height = demuxed.height;
+
+    if (!width || !height) {
+        console.log('⚠️ Width/height missing from demuxer, loading video element to get dimensions...');
+        const video = document.createElement('video');
+        const url = URL.createObjectURL(videoFile);
+        video.src = url;
+
+        await new Promise((resolve, reject) => {
+            video.onloadedmetadata = () => {
+                width = video.videoWidth;
+                height = video.videoHeight;
+                console.log('✓ Got dimensions from video element:', width, 'x', height);
+                resolve();
+            };
+            video.onerror = () => reject(new Error('Failed to load video metadata'));
+        });
+
+        URL.revokeObjectURL(url);
+
+        if (!width || !height) {
+            throw new Error(`Invalid video dimensions: ${width}x${height}`);
+        }
+    }
+
+    // 4. Setup for deduplication (optional, disabled by default for VFR accuracy)
+    const skipDuplicates = options.skipDuplicates !== undefined ? options.skipDuplicates : false;
+    const sampleSize = options.sampleSize || 16;
+    const sampleCanvas = skipDuplicates ? document.createElement('canvas') : null;
+    const sampleCtx = skipDuplicates ? (() => {
+        sampleCanvas.width = sampleSize;
+        sampleCanvas.height = sampleSize;
+        return sampleCanvas.getContext('2d', { willReadFrequently: true });
+    })() : null;
+
+    let lastHash = null;
+    const frames = [];
+    const onProgress = options.onProgress;
+    let decodedCount = 0;
+    let skippedCount = 0;
+
+    // 4. Create VideoDecoder with output handler
+    return new Promise((resolve, reject) => {
+        const decoder = new VideoDecoder({
+            output: async (videoFrame) => {
+                try {
+                    let shouldCapture = true;
+
+                    // Optional hash-based deduplication
+                    if (skipDuplicates) {
+                        sampleCtx.drawImage(videoFrame, 0, 0, sampleSize, sampleSize);
+                        const data = sampleCtx.getImageData(0, 0, sampleSize, sampleSize).data;
+                        let hash = 0;
+                        for (let i = 0; i < data.length; i += 4) {
+                            hash = (hash + data[i] + data[i + 1] + data[i + 2]) >>> 0;
+                        }
+
+                        if (hash !== lastHash) {
+                            lastHash = hash;
+                        } else {
+                            shouldCapture = false;
+                            skippedCount++;
+                            console.log(`⏭️ Skipped duplicate frame ${decodedCount} (hash: ${hash})`);
+                        }
+                    }
+
+                    if (shouldCapture) {
+                        // Convert VideoFrame to ImageBitmap for consistent storage
+                        const bitmap = await createImageBitmap(videoFrame);
+                        frames.push(bitmap);
+                    }
+
+                    // CRITICAL: Close VideoFrame to prevent memory leak
+                    videoFrame.close();
+
+                    decodedCount++;
+
+                } catch (error) {
+                    console.error('Frame output error:', error);
+                    videoFrame.close(); // Still close on error
+                }
+            },
+            error: (error) => {
+                console.error('VideoDecoder error:', error);
+                decoder.close();
+                reject(new Error(`WebCodecs decode error: ${error.message}`));
+            }
+        });
+
+        // 5. Configure decoder based on codec type
+        try {
+            const config = {
+                codec: demuxed.codec,
+                codedWidth: width,
+                codedHeight: height,
+                optimizeForLatency: true
+            };
+
+            // H.264/AVC requires description (avcC box), VP8/VP9 do not
+            if (demuxed.description) {
+                config.description = demuxed.description;
+            }
+
+            decoder.configure(config);
+
+        } catch (error) {
+            decoder.close();
+            reject(new Error(`WebCodecs config error: ${error.message}`));
+            return;
+        }
+
+        // 6. Process all samples (no skipping for VFR accuracy)
+        let processedSamples = 0;
+        const totalSamples = demuxed.samples.length;
+
+        try {
+            for (let i = 0; i < totalSamples; i++) {
+                const sample = demuxed.samples[i];
+
+                // Create EncodedVideoChunk from sample data
+                const chunk = new EncodedVideoChunk({
+                    type: sample.type,           // 'key' or 'delta'
+                    timestamp: sample.timestampUs || 0,
+                    duration: sample.durationUs || 0,
+                    data: sample.data            // Uint8Array
+                });
+
+                decoder.decode(chunk);
+                processedSamples++;
+
+                // Progress callback
+                if (onProgress) {
+                    onProgress({
+                        decodedFrames: frames.length,
+                        expectedFrames: totalSamples,
+                        sampleIndex: processedSamples,
+                        totalSamples: totalSamples
+                    });
+                }
+            }
+
+            // 7. Flush decoder and wait for all frames
+            decoder.flush().then(() => {
+                decoder.close();
+
+                // Final progress update
+                if (onProgress) {
+                    onProgress({
+                        decodedFrames: frames.length,
+                        expectedFrames: totalSamples,
+                        sampleIndex: totalSamples,
+                        totalSamples: totalSamples
+                    });
+                }
+
+                if (skipDuplicates) {
+                    console.log(`📊 WebCodecs summary: ${totalSamples} samples → ${frames.length} unique frames (${skippedCount} duplicates removed)`);
+                } else {
+                    console.log(`📊 WebCodecs summary: ${totalSamples} samples → ${frames.length} frames (deduplication disabled for VFR accuracy)`);
+                }
+
+                resolve({
+                    frames: frames,
+                    width: width,
+                    height: height,
+                    duration: demuxed.duration
+                });
+
+            }).catch((error) => {
+                decoder.close();
+                reject(new Error(`WebCodecs flush error: ${error.message}`));
+            });
+
+        } catch (error) {
+            decoder.close();
+            // Clean up any frames created before error
+            frames.forEach(frame => {
+                if (frame.close) frame.close();
+            });
+            reject(new Error(`WebCodecs sample processing error: ${error.message}`));
+        }
+    });
+}
+
 async function extractFramesWithMeta(videoFile, options = {}) {
+    console.log('⚙️ Frame extraction options:', { useWebCodecs: options.useWebCodecs, hasVideoDecoder: 'VideoDecoder' in window });
+
+    // Demux video file to get codec info and samples
     const demuxed = options.demuxed || await demuxVideoFile(videoFile);
     const inferredFps = estimateFps(demuxed);
     const duration = demuxed && demuxed.duration ? demuxed.duration : 0;
     const bitrate = estimateBitrate(videoFile.size, duration);
     const fpsForDecode = inferredFps || options.fallbackFps || 30;
-    const result = await extractFramesWithPlayback(videoFile, demuxed, { ...options, fallbackFps: fpsForDecode });
+
+    let result;
+    let extractionMethod = 'playback'; // Track which method was used
+
+    // Try WebCodecs if requested and supported
+    if (options.useWebCodecs && 'VideoDecoder' in window) {
+        try {
+            console.log('🚀 USING WEBCODECS EXTRACTION');
+            const startTime = performance.now();
+
+            result = await extractFramesWithWebCodecs(videoFile, demuxed, {
+                ...options,
+                fallbackFps: fpsForDecode
+            });
+
+            const extractionTime = performance.now() - startTime;
+            console.log(`WebCodecs extraction completed in ${extractionTime.toFixed(2)}ms`);
+            extractionMethod = 'webcodecs';
+
+        } catch (error) {
+            console.warn('WebCodecs extraction failed, falling back to playback method:', error);
+
+            // Fallback to playback method
+            result = await extractFramesWithPlayback(videoFile, demuxed, {
+                ...options,
+                fallbackFps: fpsForDecode
+            });
+            extractionMethod = 'playback-fallback';
+        }
+    } else {
+        // Use playback method (default or WebCodecs not available)
+        console.log('📹 USING PLAYBACK EXTRACTION (WebCodecs disabled or not supported)');
+        result = await extractFramesWithPlayback(videoFile, demuxed, {
+            ...options,
+            fallbackFps: fpsForDecode
+        });
+    }
+
+    // Return enhanced result with metadata
     return {
         ...result,
         demuxed,
         inferredFps,
         bitrate,
-        fpsForDecode
+        fpsForDecode,
+        extractionMethod  // NEW: Track which method was used
     };
 }
 

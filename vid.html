@@ -554,6 +554,17 @@
             </div>
         </div>
 
+        <div style="margin-top: 15px; padding: 12px; background: #f8f9fa; border-radius: 4px;">
+            <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" id="useWebCodecsToggle" style="margin-right: 8px; width: 18px; height: 18px;">
+                <span style="font-weight: bold;">Use WebCodecs API for frame extraction</span>
+            </label>
+            <div style="font-size: 12px; color: #666; margin-top: 4px; margin-left: 26px;">
+                More accurate for VFR videos. Falls back to playback if unsupported.
+            </div>
+            <div id="webCodecsSupport" style="font-size: 11px; margin-top: 4px; margin-left: 26px;"></div>
+        </div>
+
         <div class="controls" id="downloadControls" style="margin-top:15px; display:none;">
             <div class="control-row">
                 <label for="fpsSelector">FPS:</label>
@@ -645,6 +656,26 @@
         cropBottomInput.addEventListener('change', () => updateCropFromInputs());
         cropLeftInput.addEventListener('change', () => updateCropFromInputs());
         cropRightInput.addEventListener('change', () => updateCropFromInputs());
+
+        // WebCodecs feature detection and localStorage persistence
+        const useWebCodecsToggle = document.getElementById('useWebCodecsToggle');
+        const webCodecsSupport = document.getElementById('webCodecsSupport');
+
+        if ('VideoDecoder' in window) {
+            webCodecsSupport.textContent = '✓ WebCodecs API supported';
+            webCodecsSupport.style.color = '#28a745';
+        } else {
+            webCodecsSupport.textContent = '✗ Not supported (will use playback)';
+            webCodecsSupport.style.color = '#dc3545';
+            useWebCodecsToggle.disabled = true;
+        }
+
+        const savedPref = localStorage.getItem('useWebCodecs');
+        if (savedPref !== null) useWebCodecsToggle.checked = savedPref === 'true';
+
+        useWebCodecsToggle.addEventListener('change', () => {
+            localStorage.setItem('useWebCodecs', useWebCodecsToggle.checked);
+        });
 
         function reset() {
             clips.forEach(clip => {
@@ -962,6 +993,7 @@
             try {
                 const result = await extractFramesWithMeta(clip.file, {
                     captureAll: true,
+                    useWebCodecs: useWebCodecsToggle.checked,
                     usePlayback: true,
                     playbackRate: 1.0,
                     demuxed: demuxed,
@@ -974,6 +1006,15 @@
                             ? `Extracting frames: ${Math.min(decodedFrames, expectedFrames)}/${expectedFrames}`
                             : `Decoding samples: ${sampleIndex}/${totalSamples}`;
                     }
+                });
+
+                // Validation logging
+                console.log('Frame extraction:', {
+                    method: result.extractionMethod || (useWebCodecsToggle.checked ? 'WebCodecs' : 'Playback'),
+                    extractedFrames: result.frames.length,
+                    demuxedSamples: demuxed.samples.length,
+                    match: result.frames.length === demuxed.samples.length ? '✓' : '⚠',
+                    codec: demuxed.codec
                 });
 
                 clip.frames = result.frames;
