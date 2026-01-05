@@ -260,22 +260,22 @@
 
         .crop-handle {
             position: absolute;
-            width: 14px;
-            height: 14px;
+            width: 18px;
+            height: 18px;
             background: #00bcd4;
             clip-path: polygon(0 0, 100% 0, 0 100%);
             touch-action: none;
         }
 
-        .crop-handle.tl { left: -2px; top: -2px; cursor: nwse-resize; transform: rotate(0deg); }
-        .crop-handle.tr { right: -2px; top: -2px; cursor: nesw-resize; transform: rotate(90deg); }
-        .crop-handle.br { right: -2px; bottom: -2px; cursor: nwse-resize; transform: rotate(180deg); }
-        .crop-handle.bl { left: -2px; bottom: -2px; cursor: nesw-resize; transform: rotate(270deg); }
+        .crop-handle.tl { left: -4px; top: -4px; cursor: nwse-resize; transform: rotate(0deg); }
+        .crop-handle.tr { right: -4px; top: -4px; cursor: nesw-resize; transform: rotate(90deg); }
+        .crop-handle.br { right: -4px; bottom: -4px; cursor: nwse-resize; transform: rotate(180deg); }
+        .crop-handle.bl { left: -4px; bottom: -4px; cursor: nesw-resize; transform: rotate(270deg); }
 
         .crop-handle.edge-top,
         .crop-handle.edge-bottom {
-            width: 50px;
-            height: 8px;
+            width: 70px;
+            height: 12px;
             background: #00bcd4;
             clip-path: none;
             border-radius: 6px;
@@ -283,17 +283,48 @@
 
         .crop-handle.edge-left,
         .crop-handle.edge-right {
-            width: 8px;
-            height: 50px;
+            width: 12px;
+            height: 70px;
             background: #00bcd4;
             clip-path: none;
             border-radius: 6px;
         }
 
-        .crop-handle.edge-top { top: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-        .crop-handle.edge-bottom { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-        .crop-handle.edge-left { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
-        .crop-handle.edge-right { right: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+        .crop-handle.edge-top { top: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .crop-handle.edge-bottom { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .crop-handle.edge-left { left: -6px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+        .crop-handle.edge-right { right: -6px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+
+        @media (max-width: 768px) {
+            .crop-handle {
+                width: 26px;
+                height: 26px;
+            }
+
+            .crop-handle.tl { left: -8px; top: -8px; }
+            .crop-handle.tr { right: -8px; top: -8px; }
+            .crop-handle.br { right: -8px; bottom: -8px; }
+            .crop-handle.bl { left: -8px; bottom: -8px; }
+
+            .crop-handle.edge-top,
+            .crop-handle.edge-bottom {
+                width: 100px;
+                height: 18px;
+                border-radius: 10px;
+            }
+
+            .crop-handle.edge-left,
+            .crop-handle.edge-right {
+                width: 18px;
+                height: 100px;
+                border-radius: 10px;
+            }
+
+            .crop-handle.edge-top { top: -10px; }
+            .crop-handle.edge-bottom { bottom: -10px; }
+            .crop-handle.edge-left { left: -10px; }
+            .crop-handle.edge-right { right: -10px; }
+        }
 
         .frame-viewer {
             margin-top: 12px;
@@ -619,7 +650,6 @@
                             <input type="number" data-field="start" min="1" max="${clip.totalFrames}" value="${clip.startFrame + 1}">
                             <button class="secondary" data-action="set-end">Set End</button>
                             <input type="number" data-field="end" min="1" max="${clip.totalFrames}" value="${clip.endFrame + 1}">
-                            <button class="secondary" data-action="split">Split</button>
                         </div>
                     </div>
                 ` : '';
@@ -627,7 +657,7 @@
                     <div class="clip-header">
                         <div class="clip-title">${clip.name}</div>
                         <div>
-                            <button class="secondary" data-action="frames">${clip.viewerOpen ? 'Hide' : 'Show'}</button>
+                            <button class="secondary" data-action="split">/</button>
                             <button class="secondary" data-action="up">↑</button>
                             <button class="secondary" data-action="down">↓</button>
                             <button class="secondary" data-action="remove">✕</button>
@@ -662,16 +692,6 @@
                         clips.splice(index, 1);
                         renderClips();
                         syncCropToOutput();
-                        return;
-                    }
-                    if (action === 'frames') {
-                        previewPlayback.stop();
-                        clip.viewerOpen = !clip.viewerOpen;
-                        if (clip.viewerOpen && !clip.frames) {
-                            loadClipFrames(clip).then(renderClips);
-                            return;
-                        }
-                        renderClips();
                         return;
                     }
                     if (action === 'frame-back' && clip.frames) {
@@ -1087,6 +1107,9 @@
 
         cropOverlay.addEventListener('pointerdown', (e) => {
             const handle = e.target.dataset.handle;
+            if (e.pointerId !== undefined) {
+                cropOverlay.setPointerCapture(e.pointerId);
+            }
             if (handle) {
                 startCropDrag(e, handle);
             } else {
@@ -1095,6 +1118,21 @@
         });
         window.addEventListener('pointermove', (e) => moveCropDrag(e));
         window.addEventListener('pointerup', () => endCropDrag());
+        window.addEventListener('pointercancel', () => endCropDrag());
+        cropOverlay.addEventListener('touchstart', (e) => {
+            if (!e.touches || !e.touches[0]) return;
+            const touch = e.touches[0];
+            const handle = e.target.dataset.handle;
+            startCropDrag({ clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => e.preventDefault() }, handle || 'move');
+        }, { passive: false });
+        cropOverlay.addEventListener('touchmove', (e) => {
+            if (!cropDragState || !e.touches || !e.touches[0]) return;
+            const touch = e.touches[0];
+            moveCropDrag({ clientX: touch.clientX, clientY: touch.clientY });
+            e.preventDefault();
+        }, { passive: false });
+        cropOverlay.addEventListener('touchend', () => endCropDrag());
+        cropOverlay.addEventListener('touchcancel', () => endCropDrag());
         window.addEventListener('resize', () => updateCropOverlay());
 
         async function mergeClips() {
