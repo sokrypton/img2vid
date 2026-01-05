@@ -832,12 +832,20 @@ async function decodeFramesFromDemux(demuxed, fps, options = {}) {
         }
         decoder.configure(config);
 
+        let lastTimestamp = null;
         for (let i = 0; i < demuxed.samples.length; i++) {
             const sample = demuxed.samples[i];
-            const timestamp = Math.round(Number(sample.timestampUs));
+            let timestamp = Math.round(Number(sample.timestampUs));
             if (!Number.isFinite(timestamp)) {
                 throw new Error('Invalid sample timestamp at index ' + i);
             }
+            if (timestamp < 0) {
+                timestamp = 0;
+            }
+            if (lastTimestamp !== null && timestamp <= lastTimestamp) {
+                timestamp = lastTimestamp + 1;
+            }
+            lastTimestamp = timestamp;
             decoder.decode(new EncodedVideoChunk({
                 type: sample.type,
                 timestamp: timestamp,
