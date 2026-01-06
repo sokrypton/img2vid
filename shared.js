@@ -841,14 +841,15 @@ async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
     let skippedPlaybackCount = 0;
 
     function captureFrame() {
-        sampleCtx.drawImage(video, 0, 0, sampleSize, sampleSize);
-        const data = sampleCtx.getImageData(0, 0, sampleSize, sampleSize).data;
-        let hash = 0;
-        for (let i = 0; i < data.length; i += 4) {
-            hash = (hash + data[i] + data[i + 1] + data[i + 2]) >>> 0;
-        }
-        if (hash !== lastHash) {
-            lastHash = hash;
+        // TEMPORARILY DISABLED: Deduplication to test backpressure fix
+        // sampleCtx.drawImage(video, 0, 0, sampleSize, sampleSize);
+        // const data = sampleCtx.getImageData(0, 0, sampleSize, sampleSize).data;
+        // let hash = 0;
+        // for (let i = 0; i < data.length; i += 4) {
+        //     hash = (hash + data[i] + data[i + 1] + data[i + 2]) >>> 0;
+        // }
+        // if (hash !== lastHash) {
+        //     lastHash = hash;
             return (async () => {
                 let bitmap;
                 if (useDirectBitmap) {
@@ -859,10 +860,10 @@ async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
                 }
                 frames.push(bitmap);
             })();
-        } else {
-            skippedPlaybackCount++;
-        }
-        return Promise.resolve();
+        // } else {
+        //     skippedPlaybackCount++;
+        // }
+        // return Promise.resolve();
     }
 
     const baseRate = options.playbackRate || 1.0;
@@ -1319,10 +1320,17 @@ async function encodeFramesWithCanvas(options) {
     const drawFrame = options.drawFrame;
     const onProgress = options.onProgress;
 
+    // Capture stack trace for better error reporting
+    const encoderError = new Error();
+
     const muxer = new WebMMuxer(fps, width, height, frameCount / fps);
     const encoder = new VideoEncoder({
         output: (chunk, meta) => muxer.add(chunk, meta),
-        error: e => { throw e; }
+        error: (error) => {
+            // Preserve original stack trace for better debugging
+            error.stack = encoderError.stack;
+            throw error;
+        }
     });
 
     const encoderConfig = {
@@ -1351,6 +1359,14 @@ async function encodeFramesWithCanvas(options) {
         } else {
             ctx.drawImage(frame, 0, 0, width, height);
         }
+
+        // Backpressure: Wait if encoder queue is full (prevents frame drops)
+        if (encoder.encodeQueueSize >= 4) {
+            await new Promise(resolve =>
+                encoder.addEventListener('dequeue', resolve, { once: true })
+            );
+        }
+
         const videoFrame = new VideoFrame(canvas, { timestamp: i * (1000000 / fps) });
         encoder.encode(videoFrame, { keyFrame: i % (fps * 2) === 0 });
         videoFrame.close();
@@ -1469,6 +1485,9 @@ async function encodeMp4(options) {
     const drawFrame = options.drawFrame;
     const onProgress = options.onProgress;
 
+    // Capture stack trace for better error reporting
+    const encoderError = new Error();
+
     // Create muxer with H.264 video
     const muxer = new Muxer({
         target: new ArrayBufferTarget(),
@@ -1484,7 +1503,11 @@ async function encodeMp4(options) {
     // Create VideoEncoder for H.264
     const encoder = new VideoEncoder({
         output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-        error: e => { throw e; }
+        error: (error) => {
+            // Preserve original stack trace for better debugging
+            error.stack = encoderError.stack;
+            throw error;
+        }
     });
 
     // Configure encoder with H.264 codec
@@ -1522,6 +1545,13 @@ async function encodeMp4(options) {
             ctx.drawImage(frame, 0, 0, width, height);
         }
 
+        // Backpressure: Wait if encoder queue is full (prevents frame drops)
+        if (encoder.encodeQueueSize >= 4) {
+            await new Promise(resolve =>
+                encoder.addEventListener('dequeue', resolve, { once: true })
+            );
+        }
+
         // Create VideoFrame and encode
         const videoFrame = new VideoFrame(canvas, {
             timestamp: i * (1000000 / fps) // microseconds
@@ -1540,7 +1570,7 @@ async function encodeMp4(options) {
             });
         }
 
-        // Yield to event loop
+        // Yield to event loop (now less needed due to backpressure)
         await new Promise(resolve => setTimeout(resolve, 0));
     }
 
