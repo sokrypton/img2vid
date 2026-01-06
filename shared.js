@@ -1866,7 +1866,10 @@ async function encodeMp4(options) {
 
     // Fallback to WebM if MP4 not supported
     if (!useMP4) {
-        return encodeFramesWithCanvas(options);
+        const webmBlob = await encodeFramesWithCanvas(options);
+        // Return blob with format metadata
+        webmBlob._format = 'webm';
+        return webmBlob;
     }
 
     // Proceed with MP4 encoding
@@ -1935,8 +1938,10 @@ async function encodeMp4(options) {
     await encoder.flush();
     encoder.close();
 
-    // Return MP4 blob
-    return muxer.finalize();
+    // Return MP4 blob with format metadata
+    const mp4Blob = muxer.finalize();
+    mp4Blob._format = 'mp4';
+    return mp4Blob;
 }
 
 function createFramePlayback(options) {

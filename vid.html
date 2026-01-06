@@ -1894,21 +1894,26 @@
                     }
                 };
 
-                let blob, filename;
+                let blob, actualFormat;
                 if (format === 'webm') {
                     encodeOptions.bitrate = bitrate;
                     blob = await encodeFramesWithCanvas(encodeOptions);
-                    filename = 'merged.webm';
+                    actualFormat = 'webm';
                 } else if (format === 'mp4') {
                     encodeOptions.bitrate = bitrate;
                     blob = await encodeMp4(encodeOptions);
-                    filename = 'merged.mp4';
+                    // Check actual format (may have fallen back to WebM)
+                    actualFormat = blob._format || 'mp4';
                 } else if (format === 'gif') {
                     encodeOptions.gifQuality = quality;
                     encodeOptions.gifDither = dither;
                     blob = await encodeGif(encodeOptions);
-                    filename = 'merged.gif';
+                    actualFormat = 'gif';
                 }
+
+                // Generate unique filename with timestamp
+                const timestamp = Date.now();
+                const filename = `merged-${timestamp}.${actualFormat}`;
 
                 const url = URL.createObjectURL(blob);
                 downloadLink.href = url;
