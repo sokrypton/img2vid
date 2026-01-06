@@ -789,6 +789,382 @@ class WebMMuxer {
     }
 }
 
+// Custom lightweight MP4 muxer (inspired by mp4-muxer and Mediabunny)
+class MP4Muxer {
+    constructor(width, height, fps) {
+        this.width = width;
+        this.height = height;
+        this.fps = fps;
+        this.samples = [];
+        this.decoderConfig = null;
+        this.creationTime = Math.floor(Date.now() / 1000) + 2082844800; // Seconds since 1904
+    }
+
+    // Helper: Write 32-bit big-endian integer
+    writeU32(value) {
+        return new Uint8Array([
+            (value >> 24) & 0xFF,
+            (value >> 16) & 0xFF,
+            (value >> 8) & 0xFF,
+            value & 0xFF
+        ]);
+    }
+
+    // Helper: Write 16-bit big-endian integer
+    writeU16(value) {
+        return new Uint8Array([
+            (value >> 8) & 0xFF,
+            value & 0xFF
+        ]);
+    }
+
+    // Helper: Create atom/box with type and data
+    box(type, ...data) {
+        const typeBytes = new TextEncoder().encode(type);
+        const dataArrays = data.flat();
+        const totalSize = 8 + dataArrays.reduce((sum, arr) => sum + arr.byteLength, 0);
+
+        const result = new Uint8Array(totalSize);
+        let offset = 0;
+
+        // Write size
+        result.set(this.writeU32(totalSize), offset);
+        offset += 4;
+
+        // Write type
+        result.set(typeBytes, offset);
+        offset += 4;
+
+        // Write data
+        for (const arr of dataArrays) {
+            result.set(arr, offset);
+            offset += arr.byteLength;
+        }
+
+        return result;
+    }
+
+    // Add encoded chunk
+    add(chunk, meta) {
+        // Store decoder config from first chunk with metadata
+        if (meta?.decoderConfig && !this.decoderConfig) {
+            this.decoderConfig = meta.decoderConfig;
+        }
+
+        // Copy chunk data
+        const data = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(data);
+
+        this.samples.push({
+            data: data,
+            timestamp: chunk.timestamp, // microseconds
+            duration: chunk.duration,
+            isKey: chunk.type === 'key'
+        });
+    }
+
+    // Generate ftyp atom (file type)
+    generateFtyp() {
+        return this.box('ftyp',
+            new TextEncoder().encode('isom'), // Major brand
+            this.writeU32(512),                // Minor version
+            new TextEncoder().encode('isom'),  // Compatible brands
+            new TextEncoder().encode('iso2'),
+            new TextEncoder().encode('avc1'),
+            new TextEncoder().encode('mp41')
+        );
+    }
+
+    // Generate avcC atom (H.264 decoder configuration)
+    generateAvcC() {
+        if (!this.decoderConfig?.description) {
+            // Fallback: minimal avcC for Baseline profile
+            return new Uint8Array([
+                1,        // configurationVersion
+                0x42,     // profile (Baseline)
+                0x00,     // profile compatibility
+                0x1f,     // level 3.1
+                0xFF,     // lengthSizeMinusOne (4 bytes)
+                0xE1,     // numOfSequenceParameterSets (1)
+                0x00, 0x00, // SPS length (empty)
+                0x01,     // numOfPictureParameterSets (1)
+                0x00, 0x00  // PPS length (empty)
+            ]);
+        }
+
+        // Use decoder config description
+        return new Uint8Array(this.decoderConfig.description);
+    }
+
+    // Generate stsd atom (sample description)
+    generateStsd() {
+        const avcC = this.generateAvcC();
+
+        const avc1 = this.box('avc1',
+            new Uint8Array([0, 0, 0, 0, 0, 0]), // Reserved
+            this.writeU16(1),                   // Data reference index
+            new Uint8Array(16),                 // Pre-defined + reserved
+            this.writeU16(this.width),          // Width
+            this.writeU16(this.height),         // Height
+            this.writeU32(0x00480000),          // Horizontal resolution (72 dpi)
+            this.writeU32(0x00480000),          // Vertical resolution (72 dpi)
+            this.writeU32(0),                   // Reserved
+            this.writeU16(1),                   // Frame count
+            new Uint8Array(32),                 // Compressor name (empty)
+            this.writeU16(0x0018),              // Depth (24-bit)
+            this.writeU16(0xFFFF),              // Pre-defined
+            this.box('avcC', avcC)              // avcC configuration
+        );
+
+        return this.box('stsd',
+            new Uint8Array([0, 0, 0, 0]),      // Version + flags
+            this.writeU32(1),                   // Entry count
+            avc1
+        );
+    }
+
+    // Generate stts atom (time-to-sample)
+    generateStts() {
+        const entries = [];
+        let currentDuration = this.samples[0]?.duration || 0;
+        let count = 0;
+
+        for (const sample of this.samples) {
+            if (sample.duration === currentDuration) {
+                count++;
+            } else {
+                entries.push({ count, duration: currentDuration });
+                currentDuration = sample.duration;
+                count = 1;
+            }
+        }
+        if (count > 0) {
+            entries.push({ count, duration: currentDuration });
+        }
+
+        const entryData = entries.flatMap(e => [
+            ...this.writeU32(e.count),
+            ...this.writeU32(Math.round(e.duration)) // Convert to timescale units
+        ]);
+
+        return this.box('stts',
+            new Uint8Array([0, 0, 0, 0]),     // Version + flags
+            this.writeU32(entries.length),     // Entry count
+            new Uint8Array(entryData)
+        );
+    }
+
+    // Generate stss atom (sync sample - keyframes)
+    generateStss() {
+        const keyFrames = this.samples
+            .map((s, i) => s.isKey ? i + 1 : null)
+            .filter(i => i !== null);
+
+        const entryData = keyFrames.flatMap(i => [...this.writeU32(i)]);
+
+        return this.box('stss',
+            new Uint8Array([0, 0, 0, 0]),     // Version + flags
+            this.writeU32(keyFrames.length),   // Entry count
+            new Uint8Array(entryData)
+        );
+    }
+
+    // Generate stsz atom (sample sizes)
+    generateStsz() {
+        const sizes = this.samples.flatMap(s => [...this.writeU32(s.data.byteLength)]);
+
+        return this.box('stsz',
+            new Uint8Array([0, 0, 0, 0]),     // Version + flags
+            this.writeU32(0),                  // Sample size (0 = variable)
+            this.writeU32(this.samples.length), // Sample count
+            new Uint8Array(sizes)
+        );
+    }
+
+    // Generate stsc atom (sample-to-chunk)
+    generateStsc() {
+        // Simple case: all samples in one chunk
+        return this.box('stsc',
+            new Uint8Array([0, 0, 0, 0]),     // Version + flags
+            this.writeU32(1),                  // Entry count
+            this.writeU32(1),                  // First chunk
+            this.writeU32(this.samples.length), // Samples per chunk
+            this.writeU32(1)                   // Sample description index
+        );
+    }
+
+    // Generate stco atom (chunk offsets)
+    generateStco(mdatOffset) {
+        return this.box('stco',
+            new Uint8Array([0, 0, 0, 0]),     // Version + flags
+            this.writeU32(1),                  // Entry count
+            this.writeU32(mdatOffset)          // Chunk offset
+        );
+    }
+
+    // Generate complete moov atom (movie metadata)
+    generateMoov(mdatOffset) {
+        const duration = this.samples.length * (1000000 / this.fps); // microseconds
+        const timescale = 1000000; // 1 MHz (microseconds)
+        const durationInTimescale = Math.round(duration);
+
+        // mvhd - movie header
+        const mvhd = this.box('mvhd',
+            new Uint8Array([0, 0, 0, 0]),         // Version + flags
+            this.writeU32(this.creationTime),      // Creation time
+            this.writeU32(this.creationTime),      // Modification time
+            this.writeU32(timescale),              // Timescale
+            this.writeU32(durationInTimescale),    // Duration
+            this.writeU32(0x00010000),             // Preferred rate (1.0)
+            this.writeU16(0x0100),                 // Preferred volume (1.0)
+            new Uint8Array(10),                    // Reserved
+            new Uint8Array([                       // Matrix
+                0x00, 0x01, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x01, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00
+            ]),
+            new Uint8Array(24),                    // Pre-defined
+            this.writeU32(2)                       // Next track ID
+        );
+
+        // tkhd - track header
+        const tkhd = this.box('tkhd',
+            new Uint8Array([0, 0, 0, 7]),         // Version + flags (enabled)
+            this.writeU32(this.creationTime),      // Creation time
+            this.writeU32(this.creationTime),      // Modification time
+            this.writeU32(1),                      // Track ID
+            this.writeU32(0),                      // Reserved
+            this.writeU32(durationInTimescale),    // Duration
+            new Uint8Array(8),                     // Reserved
+            this.writeU16(0),                      // Layer
+            this.writeU16(0),                      // Alternate group
+            this.writeU16(0),                      // Volume (0 for video)
+            this.writeU16(0),                      // Reserved
+            new Uint8Array([                       // Matrix
+                0x00, 0x01, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x01, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00
+            ]),
+            this.writeU32(this.width << 16),       // Width (16.16 fixed point)
+            this.writeU32(this.height << 16)       // Height (16.16 fixed point)
+        );
+
+        // mdhd - media header
+        const mdhd = this.box('mdhd',
+            new Uint8Array([0, 0, 0, 0]),         // Version + flags
+            this.writeU32(this.creationTime),      // Creation time
+            this.writeU32(this.creationTime),      // Modification time
+            this.writeU32(timescale),              // Timescale
+            this.writeU32(durationInTimescale),    // Duration
+            this.writeU16(0x55c4),                 // Language (und)
+            this.writeU16(0)                       // Pre-defined
+        );
+
+        // hdlr - handler reference
+        const hdlr = this.box('hdlr',
+            new Uint8Array([0, 0, 0, 0]),         // Version + flags
+            new Uint8Array([0, 0, 0, 0]),         // Pre-defined
+            new TextEncoder().encode('vide'),      // Handler type
+            new Uint8Array([0, 0, 0, 0]),         // Reserved
+            new Uint8Array([0, 0, 0, 0]),         // Reserved
+            new Uint8Array([0, 0, 0, 0]),         // Reserved
+            new TextEncoder().encode('VideoHandler\0') // Name
+        );
+
+        // vmhd - video media header
+        const vmhd = this.box('vmhd',
+            new Uint8Array([0, 0, 0, 1]),         // Version + flags
+            new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) // Graphics mode + opcolor
+        );
+
+        // dref - data reference
+        const url = this.box('url ',
+            new Uint8Array([0, 0, 0, 1])          // Version + flags (self-reference)
+        );
+        const dref = this.box('dref',
+            new Uint8Array([0, 0, 0, 0]),         // Version + flags
+            this.writeU32(1),                      // Entry count
+            url
+        );
+
+        // dinf - data information
+        const dinf = this.box('dinf', dref);
+
+        // stbl - sample table
+        const stbl = this.box('stbl',
+            this.generateStsd(),
+            this.generateStts(),
+            this.generateStss(),
+            this.generateStsc(),
+            this.generateStsz(),
+            this.generateStco(mdatOffset)
+        );
+
+        // minf - media information
+        const minf = this.box('minf', vmhd, dinf, stbl);
+
+        // mdia - media
+        const mdia = this.box('mdia', mdhd, hdlr, minf);
+
+        // trak - track
+        const trak = this.box('trak', tkhd, mdia);
+
+        // moov - movie
+        return this.box('moov', mvhd, trak);
+    }
+
+    // Generate mdat atom (media data)
+    generateMdat() {
+        const allData = this.samples.map(s => s.data);
+        const totalSize = 8 + allData.reduce((sum, d) => sum + d.byteLength, 0);
+
+        const result = new Uint8Array(totalSize);
+        let offset = 0;
+
+        // Write size and type
+        result.set(this.writeU32(totalSize), offset);
+        offset += 4;
+        result.set(new TextEncoder().encode('mdat'), offset);
+        offset += 4;
+
+        // Write all sample data
+        for (const data of allData) {
+            result.set(data, offset);
+            offset += data.byteLength;
+        }
+
+        return result;
+    }
+
+    // Finalize and return blob
+    finalize() {
+        const ftyp = this.generateFtyp();
+        const mdat = this.generateMdat();
+        const mdatOffset = ftyp.byteLength + 8; // ftyp + moov header placeholder
+
+        // Calculate actual moov size first
+        const moovTemp = this.generateMoov(0);
+        const actualMdatOffset = ftyp.byteLength + moovTemp.byteLength + 8;
+
+        // Generate final moov with correct offset
+        const moov = this.generateMoov(actualMdatOffset);
+
+        return new Blob([ftyp, moov, mdat], { type: 'video/mp4' });
+    }
+}
+
 function createEncodingCanvas(width, height) {
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -1338,7 +1714,11 @@ async function encodeFramesWithCanvas(options) {
         width: width,
         height: height,
         bitrate: bitrate,
-        framerate: fps
+        framerate: fps,
+
+        // 🚀 Mediabunny-inspired optimizations
+        latencyMode: 'quality',      // Better compression (vs 'realtime')
+        bitrateMode: 'variable'      // VBR for better quality/size ratio
     };
     if (VideoEncoder.isConfigSupported) {
         const support = await VideoEncoder.isConfigSupported(encoderConfig);
@@ -1368,7 +1748,9 @@ async function encodeFramesWithCanvas(options) {
         }
 
         const videoFrame = new VideoFrame(canvas, { timestamp: i * (1000000 / fps) });
-        encoder.encode(videoFrame, { keyFrame: i % (fps * 2) === 0 });
+        // Mark keyframes every 1 second (optimal for short 5-second videos)
+        const keyFrameInterval = 1;
+        encoder.encode(videoFrame, { keyFrame: i % (fps * keyFrameInterval) === 0 });
         videoFrame.close();
         if (onProgress) {
             onProgress({ encodedFrames: i + 1, totalFrames: frameCount });
@@ -1468,13 +1850,8 @@ async function encodeGif(options) {
 }
 
 async function encodeMp4(options) {
-    // Check if mp4-muxer library is loaded
-    if (typeof MP4Muxer === 'undefined' || typeof MP4ArrayBufferTarget === 'undefined') {
-        throw new Error('mp4-muxer library not loaded. Make sure to include mp4-muxer-loader.js as a module script.');
-    }
-
-    const Muxer = MP4Muxer;
-    const ArrayBufferTarget = MP4ArrayBufferTarget;
+    // 🔧 TOGGLE: Set to true to use custom MP4Muxer, false to use mp4-muxer library
+    const USE_CUSTOM_MP4_MUXER = options.useCustomMuxer ?? true; // Default: custom muxer
 
     const width = options.width;
     const height = options.height;
@@ -1488,21 +1865,42 @@ async function encodeMp4(options) {
     // Capture stack trace for better error reporting
     const encoderError = new Error();
 
-    // Create muxer with H.264 video
-    const muxer = new Muxer({
-        target: new ArrayBufferTarget(),
-        video: {
-            codec: 'avc',
-            width: width,
-            height: height
-        },
-        fastStart: 'in-memory',
-        firstTimestampBehavior: 'offset'
-    });
+    // Create muxer (custom or library)
+    let muxer;
+    if (USE_CUSTOM_MP4_MUXER) {
+        console.log('🔧 Using custom MP4Muxer');
+        muxer = new MP4Muxer(width, height, fps);
+    } else {
+        console.log('📦 Using mp4-muxer library');
+        // Check if mp4-muxer library is loaded
+        if (typeof MP4Muxer === 'undefined' || typeof MP4ArrayBufferTarget === 'undefined') {
+            throw new Error('mp4-muxer library not loaded. Make sure to include mp4-muxer-loader.js as a module script.');
+        }
+
+        const Muxer = MP4Muxer;
+        const ArrayBufferTarget = MP4ArrayBufferTarget;
+
+        muxer = new Muxer({
+            target: new ArrayBufferTarget(),
+            video: {
+                codec: 'avc',
+                width: width,
+                height: height
+            },
+            fastStart: 'in-memory',
+            firstTimestampBehavior: 'offset'
+        });
+    }
 
     // Create VideoEncoder for H.264
     const encoder = new VideoEncoder({
-        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        output: (chunk, meta) => {
+            if (USE_CUSTOM_MP4_MUXER) {
+                muxer.add(chunk, meta);
+            } else {
+                muxer.addVideoChunk(chunk, meta);
+            }
+        },
         error: (error) => {
             // Preserve original stack trace for better debugging
             error.stack = encoderError.stack;
@@ -1510,13 +1908,18 @@ async function encodeMp4(options) {
         }
     });
 
-    // Configure encoder with H.264 codec
+    // Configure encoder with H.264 codec + Mediabunny optimizations
     const encoderConfig = {
         codec: 'avc1.42001f', // H.264 Baseline Profile Level 3.1
         width: width,
         height: height,
         bitrate: bitrate,
         framerate: fps,
+
+        // 🚀 Mediabunny-inspired optimizations
+        latencyMode: 'quality',      // Better compression (vs 'realtime')
+        bitrateMode: 'variable',     // VBR for better quality/size ratio
+
         avc: { format: 'avc' } // Required for MP4 container
     };
 
@@ -1557,8 +1960,9 @@ async function encodeMp4(options) {
             timestamp: i * (1000000 / fps) // microseconds
         });
 
-        // Mark keyframes every 2 seconds
-        const keyFrame = i % (fps * 2) === 0;
+        // Mark keyframes every 1 second (optimal for short 5-second videos)
+        const keyFrameInterval = 1; // seconds
+        const keyFrame = i % (fps * keyFrameInterval) === 0;
         encoder.encode(videoFrame, { keyFrame });
         videoFrame.close();
 
@@ -1577,11 +1981,15 @@ async function encodeMp4(options) {
     // Flush encoder and finalize muxer
     await encoder.flush();
     encoder.close();
-    muxer.finalize();
 
-    // Get buffer and create blob
-    const buffer = muxer.target.buffer;
-    return new Blob([buffer], { type: 'video/mp4' });
+    // Return blob (method differs between custom and library muxer)
+    if (USE_CUSTOM_MP4_MUXER) {
+        return muxer.finalize(); // Custom muxer returns Blob directly
+    } else {
+        muxer.finalize(); // Library muxer needs target.buffer
+        const buffer = muxer.target.buffer;
+        return new Blob([buffer], { type: 'video/mp4' });
+    }
 }
 
 function createFramePlayback(options) {
