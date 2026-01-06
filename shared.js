@@ -851,7 +851,7 @@ class MP4Muxer {
             this.decoderConfig = meta.decoderConfig;
         }
 
-        // Copy chunk data
+        // Copy chunk data - create fresh buffer for each chunk
         const data = new Uint8Array(chunk.byteLength);
         chunk.copyTo(data);
 
@@ -879,6 +879,7 @@ class MP4Muxer {
     generateAvcC() {
         if (!this.decoderConfig?.description) {
             // Fallback: minimal avcC for Baseline profile
+            // Note: This may not work - encoder should provide decoderConfig
             return new Uint8Array([
                 1,        // configurationVersion
                 0x42,     // profile (Baseline)
@@ -892,7 +893,7 @@ class MP4Muxer {
             ]);
         }
 
-        // Use decoder config description
+        // Use decoder config description from encoder
         return new Uint8Array(this.decoderConfig.description);
     }
 
@@ -995,10 +996,15 @@ class MP4Muxer {
 
     // Generate stco atom (chunk offsets)
     generateStco(mdatOffset) {
+        // Chunk offset must point to actual data, not mdat atom header
+        // mdat structure: [4 bytes size][4 bytes 'mdat'][data...]
+        // So data starts at mdatOffset + 8
+        const chunkDataOffset = mdatOffset + 8;
+
         return this.box('stco',
             new Uint8Array([0, 0, 0, 0]),     // Version + flags
-            this.writeU32(1),                  // Entry count
-            this.writeU32(mdatOffset)          // Chunk offset
+            this.writeU32(1),                  // Entry count (we use 1 chunk for all samples)
+            this.writeU32(chunkDataOffset)     // Offset to where chunk data starts
         );
     }
 
@@ -1151,15 +1157,17 @@ class MP4Muxer {
     // Finalize and return blob
     finalize() {
         const ftyp = this.generateFtyp();
-        const mdat = this.generateMdat();
-        const mdatOffset = ftyp.byteLength + 8; // ftyp + moov header placeholder
 
-        // Calculate actual moov size first
+        // Calculate moov size first to know where mdat starts in file
         const moovTemp = this.generateMoov(0);
-        const actualMdatOffset = ftyp.byteLength + moovTemp.byteLength + 8;
 
-        // Generate final moov with correct offset
-        const moov = this.generateMoov(actualMdatOffset);
+        // File structure: [ftyp][moov][mdat]
+        // mdat starts right after ftyp + moov (no gap)
+        const mdatOffset = ftyp.byteLength + moovTemp.byteLength;
+
+        // Generate final moov with correct mdat offset
+        const moov = this.generateMoov(mdatOffset);
+        const mdat = this.generateMdat();
 
         return new Blob([ftyp, moov, mdat], { type: 'video/mp4' });
     }
@@ -1197,49 +1205,27 @@ async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
     const duration = Number.isFinite(video.duration) ? video.duration : (demuxed && demuxed.duration) || 0;
     const width = video.videoWidth || (demuxed && demuxed.width) || 0;
     const height = video.videoHeight || (demuxed && demuxed.height) || 0;
-    const sampleSize = options.sampleSize || 16;
-    const sampleCanvas = document.createElement('canvas');
-    sampleCanvas.width = sampleSize;
-    sampleCanvas.height = sampleSize;
-    const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
     const useDirectBitmap = options.useDirectBitmap !== false && typeof createImageBitmap === 'function';
     const fullCanvas = document.createElement('canvas');
     fullCanvas.width = width;
     fullCanvas.height = height;
     const fullCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
 
-    let lastHash = null;
     const frames = [];
     const onProgress = options.onProgress;
     let totalSamples = 0;
     let stopped = false;
     let resolveCapture = null;
-    let skippedPlaybackCount = 0;
 
-    function captureFrame() {
-        // TEMPORARILY DISABLED: Deduplication to test backpressure fix
-        // sampleCtx.drawImage(video, 0, 0, sampleSize, sampleSize);
-        // const data = sampleCtx.getImageData(0, 0, sampleSize, sampleSize).data;
-        // let hash = 0;
-        // for (let i = 0; i < data.length; i += 4) {
-        //     hash = (hash + data[i] + data[i + 1] + data[i + 2]) >>> 0;
-        // }
-        // if (hash !== lastHash) {
-        //     lastHash = hash;
-            return (async () => {
-                let bitmap;
-                if (useDirectBitmap) {
-                    bitmap = await createImageBitmap(video);
-                } else {
-                    fullCtx.drawImage(video, 0, 0, width, height);
-                    bitmap = await createImageBitmap(fullCanvas);
-                }
-                frames.push(bitmap);
-            })();
-        // } else {
-        //     skippedPlaybackCount++;
-        // }
-        // return Promise.resolve();
+    async function captureFrame() {
+        let bitmap;
+        if (useDirectBitmap) {
+            bitmap = await createImageBitmap(video);
+        } else {
+            fullCtx.drawImage(video, 0, 0, width, height);
+            bitmap = await createImageBitmap(fullCanvas);
+        }
+        frames.push(bitmap);
     }
 
     const baseRate = options.playbackRate || 1.0;
@@ -1300,8 +1286,6 @@ async function extractFramesWithPlayback(videoFile, demuxed, options = {}) {
     await captureFrame();
     video.pause();
     URL.revokeObjectURL(url);
-
-    console.log(`📊 Playback summary: ${frames.length} unique frames captured (${skippedPlaybackCount} duplicates skipped)`);
 
     return { frames, width, height, duration };
 }
@@ -1850,9 +1834,6 @@ async function encodeGif(options) {
 }
 
 async function encodeMp4(options) {
-    // 🔧 TOGGLE: Set to true to use custom MP4Muxer, false to use mp4-muxer library
-    const USE_CUSTOM_MP4_MUXER = options.useCustomMuxer ?? true; // Default: custom muxer
-
     const width = options.width;
     const height = options.height;
     const fps = options.fps;
@@ -1862,76 +1843,45 @@ async function encodeMp4(options) {
     const drawFrame = options.drawFrame;
     const onProgress = options.onProgress;
 
-    // Capture stack trace for better error reporting
-    const encoderError = new Error();
+    // Try H.264/MP4 first, fallback to VP9/WebM if not supported
+    const h264Config = {
+        codec: 'avc1.42001f',
+        width: width,
+        height: height,
+        bitrate: bitrate,
+        framerate: fps,
+        latencyMode: 'quality',
+        bitrateMode: 'variable',
+        avc: { format: 'avc' }
+    };
 
-    // Create muxer (custom or library)
-    let muxer;
-    if (USE_CUSTOM_MP4_MUXER) {
-        console.log('🔧 Using custom MP4Muxer');
-        muxer = new MP4Muxer(width, height, fps);
-    } else {
-        console.log('📦 Using mp4-muxer library');
-        // Check if mp4-muxer library is loaded
-        if (typeof MP4Muxer === 'undefined' || typeof MP4ArrayBufferTarget === 'undefined') {
-            throw new Error('mp4-muxer library not loaded. Make sure to include mp4-muxer-loader.js as a module script.');
+    let useMP4 = true;
+    if (VideoEncoder.isConfigSupported) {
+        const support = await VideoEncoder.isConfigSupported(h264Config);
+        if (!support.supported) {
+            console.warn('⚠️ H.264 not supported, falling back to VP9/WebM');
+            useMP4 = false;
         }
-
-        const Muxer = MP4Muxer;
-        const ArrayBufferTarget = MP4ArrayBufferTarget;
-
-        muxer = new Muxer({
-            target: new ArrayBufferTarget(),
-            video: {
-                codec: 'avc',
-                width: width,
-                height: height
-            },
-            fastStart: 'in-memory',
-            firstTimestampBehavior: 'offset'
-        });
     }
 
-    // Create VideoEncoder for H.264
+    // Fallback to WebM if MP4 not supported
+    if (!useMP4) {
+        return encodeFramesWithCanvas(options);
+    }
+
+    // Proceed with MP4 encoding
+    const encoderError = new Error();
+    const muxer = new MP4Muxer(width, height, fps);
+
     const encoder = new VideoEncoder({
-        output: (chunk, meta) => {
-            if (USE_CUSTOM_MP4_MUXER) {
-                muxer.add(chunk, meta);
-            } else {
-                muxer.addVideoChunk(chunk, meta);
-            }
-        },
+        output: (chunk, meta) => muxer.add(chunk, meta),
         error: (error) => {
-            // Preserve original stack trace for better debugging
             error.stack = encoderError.stack;
             throw error;
         }
     });
 
-    // Configure encoder with H.264 codec + Mediabunny optimizations
-    const encoderConfig = {
-        codec: 'avc1.42001f', // H.264 Baseline Profile Level 3.1
-        width: width,
-        height: height,
-        bitrate: bitrate,
-        framerate: fps,
-
-        // 🚀 Mediabunny-inspired optimizations
-        latencyMode: 'quality',      // Better compression (vs 'realtime')
-        bitrateMode: 'variable',     // VBR for better quality/size ratio
-
-        avc: { format: 'avc' } // Required for MP4 container
-    };
-
-    // Check if codec is supported
-    if (VideoEncoder.isConfigSupported) {
-        const support = await VideoEncoder.isConfigSupported(encoderConfig);
-        if (!support.supported) {
-            throw new Error('H.264 encoding not supported in this browser. Try WebM format instead.');
-        }
-    }
-
-    encoder.configure(encoderConfig);
+    encoder.configure(h264Config);
 
     // Encode all frames
     const { canvas, ctx } = createEncodingCanvas(width, height);
@@ -1956,13 +1906,16 @@ async function encodeMp4(options) {
         }
 
         // Create VideoFrame and encode
+        // Note: VideoFrame captures canvas data immediately (not a reference)
         const videoFrame = new VideoFrame(canvas, {
-            timestamp: i * (1000000 / fps) // microseconds
+            timestamp: i * (1000000 / fps), // microseconds
+            duration: 1000000 / fps // microseconds per frame
         });
 
         // Mark keyframes every 1 second (optimal for short 5-second videos)
         const keyFrameInterval = 1; // seconds
         const keyFrame = i % (fps * keyFrameInterval) === 0;
+
         encoder.encode(videoFrame, { keyFrame });
         videoFrame.close();
 
@@ -1982,14 +1935,8 @@ async function encodeMp4(options) {
     await encoder.flush();
     encoder.close();
 
-    // Return blob (method differs between custom and library muxer)
-    if (USE_CUSTOM_MP4_MUXER) {
-        return muxer.finalize(); // Custom muxer returns Blob directly
-    } else {
-        muxer.finalize(); // Library muxer needs target.buffer
-        const buffer = muxer.target.buffer;
-        return new Blob([buffer], { type: 'video/mp4' });
-    }
+    // Return MP4 blob
+    return muxer.finalize();
 }
 
 function createFramePlayback(options) {
