@@ -175,11 +175,52 @@
             gap: 10px;
         }
 
+        .clip-list.grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .view-controls {
+            display: none;
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .view-controls .mode-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .view-controls button.active {
+            background: #0056b3;
+            color: #ffffff;
+        }
+
         .clip-card {
             border: 1px solid #eee;
             border-radius: 8px;
             padding: 12px;
             background: #fff;
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+        }
+
+        #clipList.list .clip-card {
+            cursor: grab;
+        }
+
+        #clipList.list .clip-card:active {
+            cursor: grabbing;
         }
 
         .clip-header {
@@ -187,6 +228,34 @@
             gap: 10px;
             align-items: center;
             justify-content: space-between;
+        }
+
+        .clip-left {
+            width: 96px;
+            flex-shrink: 0;
+            align-self: stretch;
+        }
+
+        .clip-thumb-wrap {
+            width: 100%;
+            height: 72px;
+            background: #000;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .clip-thumb {
+            width: 100%;
+            height: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: block;
+            pointer-events: none;
+        }
+
+        .clip-body {
+            flex: 1;
+            min-width: 0;
         }
 
         .clip-title {
@@ -210,6 +279,122 @@
             flex-wrap: wrap;
             gap: 8px;
             margin-top: 10px;
+        }
+
+        .drag-placeholder {
+            border: 2px dashed #90caf9;
+            border-radius: 8px;
+            background: rgba(144,202,249,0.15);
+        }
+
+        .clip-card.dragging,
+        .clip-tile.dragging {
+            box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+            transform: scale(1.02);
+        }
+
+        .clip-tile {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 10px;
+            background: #fff;
+            cursor: grab;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            position: relative;
+        }
+
+        .clip-tile:active {
+            cursor: grabbing;
+        }
+
+        .clip-tile-thumb {
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            background: #000;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .clip-tile canvas {
+            width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: block;
+            pointer-events: none;
+        }
+
+        .clip-tile-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #333;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .clip-tile-edit {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: #6c757d;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            font-size: 13px;
+            line-height: 28px;
+            text-align: center;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .clip-tile-edit:hover {
+            background: #545b62;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 15px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 90vh;
+            overflow: auto;
+            position: relative;
+        }
+
+        .modal-close {
+            position: absolute;
+            right: 12px;
+            top: 10px;
+            background: #6c757d;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 8px;
+            cursor: pointer;
+            font-size: 12px;
+            min-height: 32px;
+        }
+
+        .modal-close:hover {
+            background: #545b62;
         }
 
         .preview input[type="number"] {
@@ -249,7 +434,15 @@
         .preview-stage {
             position: relative;
             display: inline-block;
-            width: 100%;
+            width: auto;
+            max-width: 100%;
+            overflow: visible;
+        }
+
+        .clip-preview-stage {
+            position: relative;
+            display: inline-block;
+            width: auto;
             max-width: 100%;
             overflow: visible;
         }
@@ -270,6 +463,18 @@
         .crop-shade .shade {
             position: absolute;
             background: rgba(0,0,0,0.25);
+            will-change: left, top, width, height;
+        }
+
+        .merge-shade {
+            position: absolute;
+            pointer-events: none;
+            will-change: left, top, width, height;
+        }
+
+        .merge-shade .shade {
+            position: absolute;
+            background: rgba(80,80,80,0.25);
             will-change: left, top, width, height;
         }
 
@@ -295,6 +500,20 @@
             top: -10px;
         }
 
+        .crop-handle.corner {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00bcd4;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
+        }
+
+        .crop-handle.corner.tl { left: -10px; top: -10px; cursor: nwse-resize; }
+        .crop-handle.corner.tr { right: -10px; top: -10px; cursor: nesw-resize; }
+        .crop-handle.corner.br { right: -10px; bottom: -10px; cursor: nwse-resize; }
+        .crop-handle.corner.bl { left: -10px; bottom: -10px; cursor: nesw-resize; }
+
         .crop-handle.edge-top { top: -10px; cursor: ns-resize; }
         .crop-handle.edge-bottom { bottom: -10px; cursor: ns-resize; }
         .crop-handle.edge-left { left: -10px; cursor: ew-resize; }
@@ -312,6 +531,11 @@
                 width: 24px;
                 border-radius: 12px;
             }
+
+            .crop-handle.corner {
+                width: 20px;
+                height: 20px;
+            }
         }
 
         .frame-viewer {
@@ -326,8 +550,9 @@
         }
 
         .frame-canvas {
-            width: 100%;
+            width: auto;
             max-width: 100%;
+            height: auto;
             border: 1px solid #ddd;
             border-radius: 4px;
             background: #000;
@@ -347,6 +572,12 @@
         .frame-controls .secondary {
             min-width: 56px;
             height: 44px;
+        }
+
+        .frame-controls .secondary[data-action="prev-frame"],
+        .frame-controls .secondary[data-action="next-frame"] {
+            min-width: 32px;
+            padding: 0 8px;
         }
 
         .frame-controls input[type="number"] {
@@ -442,11 +673,24 @@
         .scrubber-playline {
             position: absolute;
             top: 0;
-            width: 2px;
+            width: 3px;
             height: 100%;
-            background: #ffb74d;
-            transform: translateX(-1px);
+            background: #004494;
+            transform: translateX(-1.5px);
             will-change: left;
+        }
+
+        /* Active state for handles - white highlight */
+        .scrubber-handle.active::after {
+            border-left-color: #ffffff !important;
+            border-right-color: #ffffff !important;
+        }
+
+        /* Active state for playline - thicker and white */
+        .scrubber-playline.active {
+            width: 4px;
+            background: #ffffff;
+            transform: translateX(-2px);
         }
 
         @media (max-width: 768px) {
@@ -480,24 +724,6 @@
             height: 44px;
         }
 
-        .crop-row {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            justify-content: center;
-            margin-top: 10px;
-            flex-wrap: wrap;
-        }
-
-        .crop-row label {
-            font-size: 16px;
-            line-height: 1;
-        }
-
-        .crop-row input[type="number"] {
-            width: 56px;
-            padding: 4px;
-        }
     </style>
 </head>
 <body>
@@ -519,6 +745,13 @@
         <div class="info" id="info">Upload at least one clip to edit or merge.</div>
         <div class="loading" id="loading">Working…</div>
 
+        <div class="view-controls" id="viewControls">
+            <div class="mode-buttons">
+                <button class="secondary" id="listModeBtn">List</button>
+                <button class="secondary" id="gridModeBtn">Grid</button>
+            </div>
+        </div>
+
         <div class="clip-list" id="clipList"></div>
 
         <div class="preview" id="preview" style="display:none;">
@@ -538,21 +771,15 @@
                     <div class="crop-handle edge-right" data-handle="r"></div>
                     <div class="crop-handle edge-bottom" data-handle="b"></div>
                     <div class="crop-handle edge-left" data-handle="l"></div>
+                    <div class="crop-handle corner tl" data-handle="tl"></div>
+                    <div class="crop-handle corner tr" data-handle="tr"></div>
+                    <div class="crop-handle corner br" data-handle="br"></div>
+                    <div class="crop-handle corner bl" data-handle="bl"></div>
                 </div>
             </div>
             <div class="preview-scrub-row">
                 <button class="primary" id="globalPreviewPlayBtn">▶</button>
                 <input type="range" id="globalPreviewScrubber" min="0" max="0" value="0">
-            </div>
-            <div class="crop-row">
-                <label>▼</label>
-                <input type="number" id="cropTopInput" min="0" value="0">
-                <label>▲</label>
-                <input type="number" id="cropBottomInput" min="0" value="0">
-                <label>►</label>
-                <input type="number" id="cropLeftInput" min="0" value="0">
-                <label>◄</label>
-                <input type="number" id="cropRightInput" min="0" value="0">
             </div>
         </div>
 
@@ -659,9 +886,14 @@
         <a id="downloadLink" style="display:none;"></a>
     </div>
 
+    <div class="modal" id="clipModal">
+        <div class="modal-content" id="clipModalContent">
+            <button class="modal-close" id="clipModalClose">X</button>
+        </div>
+    </div>
+
     <script src="shared.js"></script>
     <script src="libs/gif.js"></script>
-    <script type="module" src="libs/mp4-muxer-loader.js"></script>
     <script>
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -854,6 +1086,12 @@
         const progressContainer = document.getElementById('progressContainer');
         const progressBar = document.getElementById('progressBar');
         const downloadLink = document.getElementById('downloadLink');
+        const viewControls = document.getElementById('viewControls');
+        const listModeBtn = document.getElementById('listModeBtn');
+        const gridModeBtn = document.getElementById('gridModeBtn');
+        const clipModal = document.getElementById('clipModal');
+        const clipModalContent = document.getElementById('clipModalContent');
+        const clipModalClose = document.getElementById('clipModalClose');
         const preview = document.getElementById('preview');
         const globalPreviewCanvas = document.getElementById('globalPreviewCanvas');
         const globalPreviewScrubber = document.getElementById('globalPreviewScrubber');
@@ -866,12 +1104,10 @@
         const shadeRight = document.getElementById('shadeRight');
         const previewStage = document.getElementById('previewStage');
         const cropOverlay = document.getElementById('cropOverlay');
-        const cropTopInput = document.getElementById('cropTopInput');
-        const cropBottomInput = document.getElementById('cropBottomInput');
-        const cropLeftInput = document.getElementById('cropLeftInput');
-        const cropRightInput = document.getElementById('cropRightInput');
-
         let clips = [];
+        let viewMode = 'list';
+        let dragContext = null;
+        let dragPlaceholder = null;
 
         // Will be initialized after helper functions are defined
         let previewPlayback;
@@ -902,11 +1138,6 @@
             drawMergedFrame(frameIndex);
         });
         globalPreviewPlayBtn.addEventListener('click', () => previewPlayback.toggle());
-        cropTopInput.addEventListener('change', () => updateCropFromInputs());
-        cropBottomInput.addEventListener('change', () => updateCropFromInputs());
-        cropLeftInput.addEventListener('change', () => updateCropFromInputs());
-        cropRightInput.addEventListener('change', () => updateCropFromInputs());
-
         // WebCodecs feature detection and localStorage persistence
         const useWebCodecsToggle = document.getElementById('useWebCodecsToggle');
         const webCodecsSupport = document.getElementById('webCodecsSupport');
@@ -927,6 +1158,20 @@
             localStorage.setItem('useWebCodecs', useWebCodecsToggle.checked);
         });
 
+        listModeBtn.addEventListener('click', () => setViewMode('list'));
+        gridModeBtn.addEventListener('click', () => setViewMode('grid'));
+
+        clipModal.addEventListener('click', (e) => {
+            if (e.target === clipModal) {
+                closeClipModal();
+            }
+        });
+        clipModalClose.addEventListener('click', () => closeClipModal());
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeClipModal();
+        });
+
         function reset() {
             clips.forEach(clip => {
                 if (clip.playIntervalId) {
@@ -935,6 +1180,8 @@
             });
             clips = [];
             clipList.innerHTML = '';
+            viewControls.style.display = 'none';
+            viewMode = 'list';
             preview.style.display = 'none';
             if (globalPreviewCanvas) {
                 const ctx = globalPreviewCanvas.getContext('2d');
@@ -1004,9 +1251,10 @@
                         frames: null,
                         viewerOpen: false,
                         currentFrame: 0,
-                        activeHandle: 'start',
+                        activeHandle: 'current',
                         isPlaying: false,
-                        playIntervalId: null
+                        playIntervalId: null,
+                        cropRect: null
                     });
                 } catch (error) {
                     console.error('Failed to parse', file.name, error);
@@ -1053,40 +1301,243 @@
 
         function renderClips() {
             clipList.innerHTML = '';
+            if (!clips.length) {
+                viewControls.style.display = 'none';
+                return;
+            }
+            viewControls.style.display = 'flex';
+            listModeBtn.classList.toggle('active', viewMode === 'list');
+            gridModeBtn.classList.toggle('active', viewMode === 'grid');
+            clipList.classList.toggle('grid', viewMode === 'grid');
+            clipList.classList.toggle('list', viewMode === 'list');
+
             clips.forEach((clip, index) => {
-                const card = document.createElement('div');
-                card.className = 'clip-card';
-                const frameInfo = clip.frames ? `cached ${clip.frames.length} frames` : 'frames not loaded';
-                const viewerHtml = clip.viewerOpen ? `
-                    <div class="frame-viewer">
+                if (viewMode === 'grid') {
+                    const tile = createGridTile(clip, index);
+                    clipList.appendChild(tile);
+                    return;
+                }
+                const card = createListCard(clip, index, { showActions: true, detailed: false });
+                attachClipCardHandlers(card, clip, index, { allowActions: true, inModal: false });
+                clipList.appendChild(card);
+            });
+            refreshGlobalPreview();
+            syncCropToOutput();
+            updateSizeEstimate(); // Update file size estimate when clips change
+        }
+
+        function setViewMode(mode) {
+            viewMode = mode === 'grid' ? 'grid' : 'list';
+            if (viewMode !== 'grid') {
+                closeClipModal();
+            }
+            renderClips();
+        }
+
+        function createDragPlaceholder(refEl) {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'drag-placeholder';
+            const rect = refEl.getBoundingClientRect();
+            placeholder.style.height = `${Math.round(rect.height)}px`;
+            placeholder.style.width = `${Math.round(rect.width)}px`;
+            return placeholder;
+        }
+
+        function reorderClipsByIds(ids) {
+            const map = new Map(clips.map(clip => [clip.id, clip]));
+            const next = [];
+            ids.forEach(id => {
+                const clip = map.get(id);
+                if (clip) next.push(clip);
+            });
+            clips = next;
+        }
+
+        function getOrderIdsFromPlaceholder(container, dragId) {
+            const ids = [];
+            let insertIndex = 0;
+            Array.from(container.children).forEach(child => {
+                if (child === dragPlaceholder) {
+                    insertIndex = ids.length;
+                    return;
+                }
+                if (child.classList.contains('dragging')) return;
+                const id = child.dataset.id;
+                if (id) ids.push(id);
+            });
+            ids.splice(insertIndex, 0, dragId);
+            return ids;
+        }
+
+        function cleanupDrag() {
+            if (dragContext && dragContext.element) {
+                dragContext.element.classList.remove('dragging');
+                dragContext.element.style.position = '';
+                dragContext.element.style.left = '';
+                dragContext.element.style.top = '';
+                dragContext.element.style.width = '';
+                dragContext.element.style.height = '';
+                dragContext.element.style.zIndex = '';
+                dragContext.element.style.pointerEvents = '';
+            }
+            if (dragPlaceholder && dragPlaceholder.parentNode) {
+                dragPlaceholder.parentNode.removeChild(dragPlaceholder);
+            }
+            dragContext = null;
+            dragPlaceholder = null;
+        }
+
+        function startReorderDrag(e, clip, element, requireHandle) {
+            if (e.button !== 0) return;
+            const handleEl = e.target.closest('[data-drag-handle]');
+            if (requireHandle && !handleEl) {
+                return;
+            }
+            if (!handleEl && e.target.closest('input,button,.frame-viewer,.crop-overlay,.scrubber')) {
+                return;
+            }
+            const rect = element.getBoundingClientRect();
+            dragContext = {
+                id: clip.id,
+                element,
+                offsetX: e.clientX - rect.left,
+                offsetY: e.clientY - rect.top
+            };
+            dragPlaceholder = createDragPlaceholder(element);
+            element.parentNode.insertBefore(dragPlaceholder, element.nextSibling);
+            element.classList.add('dragging');
+            element.style.position = 'fixed';
+            element.style.left = `${Math.round(rect.left)}px`;
+            element.style.top = `${Math.round(rect.top)}px`;
+            element.style.width = `${Math.round(rect.width)}px`;
+            element.style.height = `${Math.round(rect.height)}px`;
+            element.style.zIndex = '2000';
+            element.style.pointerEvents = 'none';
+            if (e.pointerId !== undefined) {
+                element.setPointerCapture(e.pointerId);
+            }
+            e.preventDefault();
+        }
+
+        function updateReorderDrag(e) {
+            if (!dragContext || !dragPlaceholder) return;
+            const { element, offsetX, offsetY } = dragContext;
+            const left = Math.round(e.clientX - offsetX);
+            const top = Math.round(e.clientY - offsetY);
+            element.style.left = `${left}px`;
+            element.style.top = `${top}px`;
+
+            const dragRect = element.getBoundingClientRect();
+            const candidates = Array.from(clipList.querySelectorAll('.clip-card,.clip-tile'))
+                .filter(node => !node.classList.contains('dragging'));
+            let best = null;
+            let bestRatio = 0;
+            for (const node of candidates) {
+                const rect = node.getBoundingClientRect();
+                const overlapX = Math.max(0, Math.min(dragRect.right, rect.right) - Math.max(dragRect.left, rect.left));
+                const overlapY = Math.max(0, Math.min(dragRect.bottom, rect.bottom) - Math.max(dragRect.top, rect.top));
+                const overlapArea = overlapX * overlapY;
+                const targetArea = rect.width * rect.height;
+                const ratio = targetArea ? overlapArea / targetArea : 0;
+                if (ratio > bestRatio) {
+                    bestRatio = ratio;
+                    best = node;
+                }
+            }
+            if (!best || bestRatio < 0.25) return;
+            const bestRect = best.getBoundingClientRect();
+            const dragCenterX = dragRect.left + dragRect.width / 2;
+            const dragCenterY = dragRect.top + dragRect.height / 2;
+            const targetCenterX = bestRect.left + bestRect.width / 2;
+            const targetCenterY = bestRect.top + bestRect.height / 2;
+            const before = dragCenterY < targetCenterY || (Math.abs(dragCenterY - targetCenterY) < bestRect.height * 0.25 && dragCenterX < targetCenterX);
+            if (before) {
+                best.parentNode.insertBefore(dragPlaceholder, best);
+            } else {
+                best.parentNode.insertBefore(dragPlaceholder, best.nextSibling);
+            }
+        }
+
+        function endReorderDrag() {
+            if (!dragContext || !dragPlaceholder) return;
+            const ids = getOrderIdsFromPlaceholder(clipList, dragContext.id);
+            reorderClipsByIds(ids);
+            cleanupDrag();
+            renderClips();
+            syncCropToOutput();
+        }
+
+        function createListCard(clip, index, options) {
+            const showActions = options.showActions;
+            const detailed = options.detailed;
+            const showThumb = options.showThumb !== false;
+            const draggable = options.draggable !== false;
+            const card = document.createElement('div');
+            card.className = 'clip-card';
+            card.dataset.id = clip.id;
+            const frameInfo = clip.frames ? `cached ${clip.frames.length} frames` : 'frames not loaded';
+            const viewerHtml = (detailed && clip.viewerOpen) ? `
+                <div class="frame-viewer">
+                    <div class="clip-preview-stage" id="clipPreviewStage-${clip.id}">
                         <canvas class="frame-canvas" id="frameCanvas-${clip.id}"></canvas>
-                        <div class="frame-controls">
-                            <input type="number" id="rangeStartInput-${clip.id}" data-field="start" min="1" max="${clip.totalFrames}" value="${clip.startFrame + 1}">
-                            <button class="secondary" data-action="play-range">${clip.isPlaying ? '⏸' : '▶'}</button>
-                            <input type="number" id="rangeEndInput-${clip.id}" data-field="end" min="1" max="${clip.totalFrames}" value="${clip.endFrame + 1}">
+                        <div class="merge-shade" id="clipMergeShade-${clip.id}" style="display:none;">
+                            <div class="shade" id="clipMergeShadeTop-${clip.id}"></div>
+                            <div class="shade" id="clipMergeShadeBottom-${clip.id}"></div>
+                            <div class="shade" id="clipMergeShadeLeft-${clip.id}"></div>
+                            <div class="shade" id="clipMergeShadeRight-${clip.id}"></div>
                         </div>
-                        <div class="frame-range-row">
-                            <div class="scrubber">
-                                    <div class="scrubber-track" id="scrubberTrack-${clip.id}">
-                                        <div class="scrubber-fill" id="scrubberFill-${clip.id}"></div>
-                                        <div class="scrubber-hit" id="scrubberHitStart-${clip.id}" data-handle="start"></div>
-                                        <div class="scrubber-hit" id="scrubberHitEnd-${clip.id}" data-handle="end"></div>
-                                        <div class="scrubber-handle start" id="scrubberStart-${clip.id}" data-handle="start"></div>
-                                        <div class="scrubber-handle end" id="scrubberEnd-${clip.id}" data-handle="end"></div>
-                                        <div class="scrubber-playline" id="scrubberCurrent-${clip.id}"></div>
-                                    </div>
-                            </div>
+                        <div class="crop-shade" id="clipCropShade-${clip.id}" style="display:none;">
+                            <div class="shade" id="clipShadeTop-${clip.id}"></div>
+                            <div class="shade" id="clipShadeBottom-${clip.id}"></div>
+                            <div class="shade" id="clipShadeLeft-${clip.id}"></div>
+                            <div class="shade" id="clipShadeRight-${clip.id}"></div>
+                        </div>
+                        <div class="crop-overlay" id="clipCropOverlay-${clip.id}" style="display:none;">
+                            <div class="crop-handle edge-top" data-handle="t"></div>
+                            <div class="crop-handle edge-right" data-handle="r"></div>
+                            <div class="crop-handle edge-bottom" data-handle="b"></div>
+                            <div class="crop-handle edge-left" data-handle="l"></div>
+                            <div class="crop-handle corner tl" data-handle="tl"></div>
+                            <div class="crop-handle corner tr" data-handle="tr"></div>
+                            <div class="crop-handle corner br" data-handle="br"></div>
+                            <div class="crop-handle corner bl" data-handle="bl"></div>
                         </div>
                     </div>
-                ` : '';
-                card.innerHTML = `
+                    <div class="frame-controls">
+                        <input type="number" id="rangeStartInput-${clip.id}" data-field="start" min="1" max="${clip.totalFrames}" value="${clip.startFrame + 1}">
+                        <button class="secondary" data-action="prev-frame" title="Previous frame (based on active selection)">◄</button>
+                        <button class="secondary" data-action="play-range">${clip.isPlaying ? '⏸' : '▶'}</button>
+                        <button class="secondary" data-action="next-frame" title="Next frame (based on active selection)">►</button>
+                        <input type="number" id="rangeEndInput-${clip.id}" data-field="end" min="1" max="${clip.totalFrames}" value="${clip.endFrame + 1}">
+                    </div>
+                    <div class="frame-range-row">
+                        <div class="scrubber">
+                                <div class="scrubber-track" id="scrubberTrack-${clip.id}">
+                                    <div class="scrubber-fill" id="scrubberFill-${clip.id}"></div>
+                                    <div class="scrubber-hit" id="scrubberHitStart-${clip.id}" data-handle="start"></div>
+                                    <div class="scrubber-hit" id="scrubberHitEnd-${clip.id}" data-handle="end"></div>
+                                    <div class="scrubber-handle start" id="scrubberStart-${clip.id}" data-handle="start"></div>
+                                    <div class="scrubber-handle end" id="scrubberEnd-${clip.id}" data-handle="end"></div>
+                                    <div class="scrubber-playline" id="scrubberCurrent-${clip.id}"></div>
+                                </div>
+                        </div>
+                    </div>
+                </div>
+            ` : '';
+            const actionsHtml = showActions ? `
+                <button class="secondary" data-action="open-modal" title="Edit">✎</button>
+                <button class="secondary" data-action="copy" title="Copy">⧉</button>
+                <button class="secondary" data-action="remove" title="Remove">✕</button>
+            ` : '';
+            card.innerHTML = `
+                ${showThumb ? `<div class="clip-left">
+                    <canvas class="clip-thumb" id="thumbCanvas-${clip.id}"></canvas>
+                </div>` : ''}
+                <div class="clip-body">
                     <div class="clip-header">
                         <div class="clip-title">${clip.name}</div>
                         <div>
-                            <button class="secondary" data-action="copy">Copy</button>
-                            <button class="secondary" data-action="up">↑</button>
-                            <button class="secondary" data-action="down">↓</button>
-                            <button class="secondary" data-action="remove">✕</button>
+                            ${actionsHtml}
                         </div>
                     </div>
                     <div class="clip-meta">
@@ -1095,137 +1546,270 @@
                         ${clip.bitrate ? `• ${formatBitrateMbps(clip.bitrate, 1)}` : ''} • ${frameInfo}
                     </div>
                     ${viewerHtml}
-                `;
-                card.addEventListener('click', (e) => {
-                    const action = e.target.getAttribute('data-action');
-                    if (action === 'up' && index > 0) {
-                        const tmp = clips[index - 1];
-                        clips[index - 1] = clips[index];
-                        clips[index] = tmp;
-                        renderClips();
-                        syncCropToOutput();
-                        return;
-                    }
-                    if (action === 'down' && index < clips.length - 1) {
-                        const tmp = clips[index + 1];
-                        clips[index + 1] = clips[index];
-                        clips[index] = tmp;
-                        renderClips();
-                        syncCropToOutput();
-                        return;
-                    }
-                    if (action === 'remove') {
-                        if (clip.playIntervalId) {
-                            clearInterval(clip.playIntervalId);
-                            clip.playIntervalId = null;
-                            clip.isPlaying = false;
-                        }
-                        clips.splice(index, 1);
-                        renderClips();
-                        syncCropToOutput();
-                        return;
-                    }
-                    if (action === 'play-range' && clip.frames) {
-                        previewPlayback.stop();
-                        toggleClipRangePlayback(clip);
-                        renderClips();
-                        return;
-                    }
-                    if (action === 'copy') {
-                        previewPlayback.stop();
-                        if (!clip.frames || !clip.frames.length) {
-                            setStatus('Load frames before copying.');
-                            return;
-                        }
-                        const copied = {
-                            ...clip,
-                            id: Math.random().toString(36).slice(2),
-                            name: `${clip.name} (Copy)`,
-                            currentFrame: clip.startFrame,
-                            activeHandle: 'start',
-                            isPlaying: false,
-                            playIntervalId: null
-                        };
-                        clips.splice(index + 1, 0, copied);
-                        renderClips();
-                        return;
-                    }
-                });
-                card.querySelectorAll('input[type="number"]').forEach(input => {
-                    input.addEventListener('change', () => {
-                        const field = input.getAttribute('data-field');
-                        const value = parseInt(input.value, 10);
-                        if (Number.isNaN(value)) return;
-
-                        // Stop playback if playing
-                        if (clip.playIntervalId) {
-                            clearInterval(clip.playIntervalId);
-                            clip.playIntervalId = null;
-                            clip.isPlaying = false;
-                        }
-
-                        if (field === 'start') {
-                            clip.startFrame = Math.max(0, Math.min(value - 1, clip.totalFrames - 1));
-                            if (clip.startFrame > clip.endFrame) clip.endFrame = clip.startFrame;
-                            clip.currentFrame = clip.startFrame;
-                            clip.activeHandle = 'start';
-                        } else {
-                            clip.endFrame = Math.max(0, Math.min(value - 1, clip.totalFrames - 1));
-                            if (clip.endFrame < clip.startFrame) clip.startFrame = clip.endFrame;
-                            clip.currentFrame = clip.endFrame;
-                            clip.activeHandle = 'end';
-                        }
-                        if (clip.currentFrame < clip.startFrame) clip.currentFrame = clip.startFrame;
-                        if (clip.currentFrame > clip.endFrame) clip.currentFrame = clip.endFrame;
-
-                        drawClipFrame(clip);
-                        refreshGlobalPreviewForClipChange();
-                        renderClips();
-                    });
-                });
-                const scrubberTrack = card.querySelector(`#scrubberTrack-${clip.id}`);
-                const startHandle = card.querySelector(`#scrubberStart-${clip.id}`);
-                const endHandle = card.querySelector(`#scrubberEnd-${clip.id}`);
-                const startHit = card.querySelector(`#scrubberHitStart-${clip.id}`);
-                const endHit = card.querySelector(`#scrubberHitEnd-${clip.id}`);
-                if (scrubberTrack && startHandle && endHandle && startHit && endHit) {
-                    const onPointerDown = (e) => {
-                        const handle = e.target.dataset.handle;
-                        if (!handle) return;
-                        previewPlayback.stop();
-                        const wasPlaying = clip.isPlaying;
-                        if (clip.playIntervalId) {
-                            clearInterval(clip.playIntervalId);
-                            clip.playIntervalId = null;
-                            clip.isPlaying = false;
-                        }
-                        const rect = scrubberTrack.getBoundingClientRect();
-                        scrubberDragState = {
-                            clip,
-                            handle,
-                            rect
-                        };
-                        if (e.pointerId !== undefined) {
-                            scrubberTrack.setPointerCapture(e.pointerId);
-                        }
-                        updateScrubberFromPointer(e.clientX);
-                        // Update button icon if playback was stopped
-                        if (wasPlaying) {
-                            renderClips();
-                        }
-                    };
-                    [startHandle, endHandle, startHit, endHit].forEach(handleEl => {
-                        handleEl.addEventListener('pointerdown', onPointerDown);
-                    });
+                </div>
+            `;
+            if (showThumb) {
+                const thumbCanvas = card.querySelector(`#thumbCanvas-${clip.id}`);
+                if (thumbCanvas && clip.frames && clip.frames.length) {
+                    drawClipThumbnail(thumbCanvas, clip, 72);
                 }
-                clipList.appendChild(card);
-                if (clip.viewerOpen && clip.frames) {
-                    drawClipFrame(clip);
+            }
+            if (viewMode === 'list' && draggable) {
+                card.addEventListener('pointerdown', (e) => {
+                    startReorderDrag(e, clip, card, false);
+                });
+            }
+            return card;
+        }
+
+        function createGridTile(clip, index) {
+            const tile = document.createElement('div');
+            tile.className = 'clip-tile';
+            tile.dataset.id = clip.id;
+            tile.innerHTML = `
+                <canvas id="gridThumb-${clip.id}"></canvas>
+                <div class="clip-tile-title">${clip.name}</div>
+            `;
+            const editBtn = document.createElement('button');
+            editBtn.className = 'clip-tile-edit';
+            editBtn.textContent = '✎';
+            editBtn.title = 'Edit';
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openClipModal(clip);
+            });
+            tile.appendChild(editBtn);
+            tile.addEventListener('pointerdown', (e) => {
+                startReorderDrag(e, clip, tile, false);
+            });
+            tile.addEventListener('dblclick', () => {
+                openClipModal(clip);
+            });
+            const thumbCanvas = tile.querySelector(`#gridThumb-${clip.id}`);
+            if (thumbCanvas && clip.frames && clip.frames.length) {
+                drawClipThumbnail(thumbCanvas, clip, 220);
+            }
+            return tile;
+        }
+
+        function attachClipCardHandlers(card, clip, index, options) {
+            card.addEventListener('click', (e) => {
+                const action = e.target.getAttribute('data-action');
+                if (!action) return;
+                const allowActions = options.allowActions;
+                if (!allowActions && ['remove', 'copy', 'open-modal'].includes(action)) {
+                    return;
+                }
+                if (action === 'open-modal') {
+                    openClipModal(clip);
+                    return;
+                }
+                if (action === 'remove') {
+                    if (clip.playIntervalId) {
+                        clearInterval(clip.playIntervalId);
+                        clip.playIntervalId = null;
+                        clip.isPlaying = false;
+                    }
+                    clips.splice(index, 1);
+                    renderClips();
+                    syncCropToOutput();
+                    return;
+                }
+                if (action === 'play-range' && clip.frames) {
+                    previewPlayback.stop();
+                    toggleClipRangePlayback(clip);
+                    if (options.inModal) {
+                        e.target.textContent = clip.isPlaying ? '⏸' : '▶';
+                        return;
+                    }
+                    renderClips();
+                    return;
+                }
+                if (action === 'prev-frame' && clip.frames) {
+                    previewPlayback.stop();
+                    advanceFrame(clip, -1);
+                    return;
+                }
+                if (action === 'next-frame' && clip.frames) {
+                    previewPlayback.stop();
+                    advanceFrame(clip, 1);
+                    return;
+                }
+                if (action === 'copy') {
+                    previewPlayback.stop();
+                    if (!clip.frames || !clip.frames.length) {
+                        setStatus('Load frames before copying.');
+                        return;
+                    }
+                    const copied = {
+                        ...clip,
+                        id: Math.random().toString(36).slice(2),
+                        name: `${clip.name} (Copy)`,
+                        currentFrame: clip.startFrame,
+                        activeHandle: 'current',
+                        isPlaying: false,
+                        playIntervalId: null
+                    };
+                    clips.splice(index + 1, 0, copied);
+                    renderClips();
+                    return;
                 }
             });
-            refreshGlobalPreview();
-            syncCropToOutput();
-            updateSizeEstimate(); // Update file size estimate when clips change
+            card.querySelectorAll('input[type="number"]').forEach(input => {
+                input.addEventListener('change', () => {
+                    const field = input.getAttribute('data-field');
+                    const value = parseInt(input.value, 10);
+                    if (Number.isNaN(value)) return;
+
+                    // Stop playback if playing
+                    if (clip.playIntervalId) {
+                        clearInterval(clip.playIntervalId);
+                        clip.playIntervalId = null;
+                        clip.isPlaying = false;
+                    }
+
+                    if (field === 'start') {
+                        clip.startFrame = Math.max(0, Math.min(value - 1, clip.totalFrames - 1));
+                        if (clip.startFrame > clip.endFrame) clip.endFrame = clip.startFrame;
+                        clip.currentFrame = clip.startFrame;
+                        clip.activeHandle = 'start';
+                    } else {
+                        clip.endFrame = Math.max(0, Math.min(value - 1, clip.totalFrames - 1));
+                        if (clip.endFrame < clip.startFrame) clip.startFrame = clip.endFrame;
+                        clip.currentFrame = clip.endFrame;
+                        clip.activeHandle = 'end';
+                    }
+                    if (clip.currentFrame < clip.startFrame) clip.currentFrame = clip.startFrame;
+                    if (clip.currentFrame > clip.endFrame) clip.currentFrame = clip.endFrame;
+
+                    drawClipFrame(clip);
+                    refreshGlobalPreviewForClipChange();
+                    renderClips();
+                });
+            });
+            const scrubberTrack = card.querySelector(`#scrubberTrack-${clip.id}`);
+            const startHandle = card.querySelector(`#scrubberStart-${clip.id}`);
+            const endHandle = card.querySelector(`#scrubberEnd-${clip.id}`);
+            const startHit = card.querySelector(`#scrubberHitStart-${clip.id}`);
+            const endHit = card.querySelector(`#scrubberHitEnd-${clip.id}`);
+            if (scrubberTrack && startHandle && endHandle && startHit && endHit) {
+                const onPointerDown = (e) => {
+                    const handle = e.target.dataset.handle;
+                    if (!handle) return;
+                    previewPlayback.stop();
+                    const wasPlaying = clip.isPlaying;
+                    if (clip.playIntervalId) {
+                        clearInterval(clip.playIntervalId);
+                        clip.playIntervalId = null;
+                        clip.isPlaying = false;
+                    }
+                    const rect = scrubberTrack.getBoundingClientRect();
+                    scrubberDragState = {
+                        clip,
+                        handle,
+                        rect
+                    };
+                    if (e.pointerId !== undefined) {
+                        scrubberTrack.setPointerCapture(e.pointerId);
+                    }
+                    updateScrubberFromPointer(e.clientX);
+                    if (wasPlaying) {
+                        renderClips();
+                    }
+                };
+                [startHandle, endHandle, startHit, endHit].forEach(handleEl => {
+                    handleEl.addEventListener('pointerdown', onPointerDown);
+                });
+            }
+            const clipCropOverlay = card.querySelector(`#clipCropOverlay-${clip.id}`);
+            if (clipCropOverlay) {
+                clipCropOverlay.addEventListener('pointerdown', (e) => {
+                    const handle = e.target.dataset.handle;
+                    if (e.pointerId !== undefined) {
+                        clipCropOverlay.setPointerCapture(e.pointerId);
+                    }
+                    startClipCropDrag(clip, e, handle || 'move');
+                });
+            }
+        }
+
+        function getCanvasTargetSize(canvas, fallbackWidth, fallbackHeight) {
+            const rect = canvas.getBoundingClientRect();
+            const width = Math.max(1, Math.round(rect.width || fallbackWidth));
+            const height = Math.max(1, Math.round(rect.height || fallbackHeight));
+            return { width, height };
+        }
+
+        function getCoverCrop(srcW, srcH, targetW, targetH) {
+            const srcRatio = srcW / srcH;
+            const targetRatio = targetW / targetH;
+            if (srcRatio > targetRatio) {
+                const cropW = srcH * targetRatio;
+                return {
+                    x: (srcW - cropW) / 2,
+                    y: 0,
+                    w: cropW,
+                    h: srcH
+                };
+            }
+            const cropH = srcW / targetRatio;
+            return {
+                x: 0,
+                y: (srcH - cropH) / 2,
+                w: srcW,
+                h: cropH
+            };
+        }
+
+        function drawClipThumbnail(canvas, clip, maxWidth, maxHeight) {
+            const frame = clip.frames && clip.frames.length
+                ? (clip.frames[clip.startFrame] || clip.frames[0])
+                : null;
+            if (!frame) return;
+            const crop = clip.cropRect ? clampCropRect(clip.cropRect, frame.width, frame.height) : null;
+            const srcW = crop ? crop.w : frame.width;
+            const srcH = crop ? crop.h : frame.height;
+            const { width, height } = getCanvasTargetSize(canvas, maxWidth, maxHeight || maxWidth);
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, width, height);
+            const cover = getCoverCrop(srcW, srcH, width, height);
+            const srcX = (crop ? crop.x : 0) + cover.x;
+            const srcY = (crop ? crop.y : 0) + cover.y;
+            ctx.drawImage(frame, srcX, srcY, cover.w, cover.h, 0, 0, width, height);
+        }
+
+        function updateClipThumbnails(clip) {
+            const listThumb = document.getElementById(`thumbCanvas-${clip.id}`);
+            if (listThumb && clip.frames && clip.frames.length) {
+                drawClipThumbnail(listThumb, clip, 96, 72);
+            }
+            const gridThumb = document.getElementById(`gridThumb-${clip.id}`);
+            if (gridThumb && clip.frames && clip.frames.length) {
+                drawClipThumbnail(gridThumb, clip, 220, 165);
+            }
+        }
+
+        function openClipModal(clip) {
+            clipModalContent.innerHTML = '';
+            clipModalContent.appendChild(clipModalClose);
+            clip.viewerOpen = true;
+            const card = createListCard(clip, clips.indexOf(clip), { showActions: false, detailed: true, showThumb: false, draggable: false });
+            attachClipCardHandlers(card, clip, clips.indexOf(clip), { allowActions: false, inModal: true });
+            clipModalContent.appendChild(card);
+            clipModal.style.display = 'flex';
+            if (clip.viewerOpen && clip.frames) {
+                requestAnimationFrame(() => {
+                    drawClipFrame(clip);
+                });
+            }
+        }
+
+        function closeClipModal() {
+            clipModal.style.display = 'none';
+            clipModalContent.innerHTML = '';
         }
 
         async function loadClipFrames(clip) {
@@ -1271,17 +1855,17 @@
                 clip.frames = result.frames;
                 if (result.inferredFps) clip.nativeFps = result.inferredFps;
                 if (result.bitrate) clip.bitrate = result.bitrate;
-                clip.currentFrame = 0;
-                clip.totalFrames = result.frames.length || clip.totalFrames;
-                clip.endFrame = Math.min(clip.endFrame, clip.totalFrames - 1);
-                clip.startFrame = Math.min(clip.startFrame, clip.totalFrames - 1);
-                if (!clip.activeHandle) {
-                    clip.activeHandle = 'start';
-                }
-            } catch (error) {
-                console.error('Decode failed for clip', error);
-                setStatus('No frames decoded for this clip.');
-            } finally {
+                    clip.currentFrame = 0;
+                    clip.totalFrames = result.frames.length || clip.totalFrames;
+                    clip.endFrame = Math.min(clip.endFrame, clip.totalFrames - 1);
+                    clip.startFrame = Math.min(clip.startFrame, clip.totalFrames - 1);
+                    if (!clip.activeHandle) {
+                        clip.activeHandle = 'start';
+                    }
+                } catch (error) {
+                    console.error('Decode failed for clip', error);
+                    setStatus('No frames decoded for this clip.');
+                } finally {
                 loading.classList.remove('active');
                 progressContainer.style.display = 'none';
             }
@@ -1344,6 +1928,29 @@
         });
         window.addEventListener('pointerup', () => endScrubberDrag());
         window.addEventListener('pointercancel', () => endScrubberDrag());
+
+        // Allow clicking directly on playline to make it active
+        clipList.addEventListener('click', (e) => {
+            if (e.target.classList.contains('scrubber-playline')) {
+                const playlineId = e.target.id;  // "scrubberCurrent-{clip.id}"
+                const clipId = playlineId.replace('scrubberCurrent-', '');
+                const clip = clips.find(c => c.id === clipId);
+
+                if (clip) {
+                    // Stop playback if playing
+                    if (clip.playIntervalId) {
+                        clearInterval(clip.playIntervalId);
+                        clip.playIntervalId = null;
+                        clip.isPlaying = false;
+                    }
+
+                    clip.activeHandle = 'current';
+                    drawClipFrame(clip);
+                    renderClips();
+                }
+            }
+        });
+
         window.addEventListener('resize', () => {
             if (resizeRaf) return;
             resizeRaf = requestAnimationFrame(() => {
@@ -1359,6 +1966,7 @@
 
         function drawClipFrame(clip) {
             const canvas = document.getElementById(`frameCanvas-${clip.id}`);
+            const overlay = document.getElementById(`clipCropOverlay-${clip.id}`);
             const rangeStartInput = document.getElementById(`rangeStartInput-${clip.id}`);
             const rangeEndInput = document.getElementById(`rangeEndInput-${clip.id}`);
             const scrubberFill = document.getElementById(`scrubberFill-${clip.id}`);
@@ -1396,18 +2004,55 @@
             if (scrubberHitStart) scrubberHitStart.style.left = `${startPct}%`;
             if (scrubberHitEnd) scrubberHitEnd.style.left = `${endPct}%`;
             if (scrubberCurrent) scrubberCurrent.style.left = `${currentPct}%`;
+
+            if (overlay) {
+                ensureClipCropRect(clip, canvas.width, canvas.height);
+                updateClipCropOverlay(clip);
+                updateClipMergeShade(clip);
+            }
+
+            // Update active handle visuals
+            updateActiveHandleVisuals(clip);
+        }
+
+        function updateActiveHandleVisuals(clip) {
+            const scrubberStart = document.getElementById(`scrubberStart-${clip.id}`);
+            const scrubberEnd = document.getElementById(`scrubberEnd-${clip.id}`);
+            const scrubberCurrent = document.getElementById(`scrubberCurrent-${clip.id}`);
+
+            if (!scrubberStart || !scrubberEnd || !scrubberCurrent) return;
+
+            // Remove all active classes first
+            scrubberStart.classList.remove('active');
+            scrubberEnd.classList.remove('active');
+            scrubberCurrent.classList.remove('active');
+
+            // Apply active class and visibility based on activeHandle
+            if (clip.activeHandle === 'start') {
+                scrubberStart.classList.add('active');
+                scrubberCurrent.style.display = 'none';  // Hide current line when start is active
+            } else if (clip.activeHandle === 'end') {
+                scrubberEnd.classList.add('active');
+                scrubberCurrent.style.display = 'none';  // Hide current line when end is active
+            } else if (clip.activeHandle === 'current') {
+                scrubberCurrent.classList.add('active');
+                scrubberCurrent.style.display = '';  // Show current line when it's active
+            }
         }
 
         function toggleClipRangePlayback(clip) {
             if (clip.playIntervalId) {
+                // Stop playback
                 clearInterval(clip.playIntervalId);
                 clip.playIntervalId = null;
                 clip.isPlaying = false;
+                renderClips();  // Re-render to update play/pause button
                 return;
             }
             const fps = clip.nativeFps || parseInt(fpsSelector.value, 10) || 16;
             const intervalMs = 1000 / fps;
             clip.isPlaying = true;
+            clip.activeHandle = 'current';  // Set current position as active during playback
             if (clip.currentFrame < clip.startFrame || clip.currentFrame > clip.endFrame) {
                 clip.currentFrame = clip.startFrame;
             }
@@ -1417,8 +2062,42 @@
                 if (clip.currentFrame > clip.endFrame) {
                     clip.currentFrame = clip.startFrame;
                 }
-                drawClipFrame(clip);
+                drawClipFrame(clip);  // This will update active visuals
             }, intervalMs);
+            renderClips();  // Re-render to update play/pause button
+        }
+
+        function advanceFrame(clip, direction) {
+            // direction: 1 for next, -1 for previous
+
+            // Stop playback if playing
+            if (clip.playIntervalId) {
+                clearInterval(clip.playIntervalId);
+                clip.playIntervalId = null;
+                clip.isPlaying = false;
+            }
+
+            const maxIndex = clip.totalFrames - 1;
+
+            // Advance the active handle's position
+            if (clip.activeHandle === 'start') {
+                // Move start handle
+                clip.startFrame = Math.max(0, Math.min(clip.endFrame, clip.startFrame + direction));
+                clip.currentFrame = clip.startFrame;
+
+            } else if (clip.activeHandle === 'end') {
+                // Move end handle
+                clip.endFrame = Math.max(clip.startFrame, Math.min(maxIndex, clip.endFrame + direction));
+                clip.currentFrame = clip.endFrame;
+
+            } else if (clip.activeHandle === 'current') {
+                // Move current position (independent of start/end)
+                clip.currentFrame = Math.max(clip.startFrame, Math.min(clip.endFrame, clip.currentFrame + direction));
+            }
+
+            drawClipFrame(clip);
+            renderClips();  // Update number inputs
+            refreshGlobalPreviewForClipChange();  // Update merged preview
         }
 
         function refreshGlobalPreviewForClipChange() {
@@ -1478,13 +2157,29 @@
         let previewBaseCtx = null;
 
         function getOutputDimensions() {
-            let outputWidth = clips[0] ? clips[0].width : 0;
-            let outputHeight = clips[0] ? clips[0].height : 0;
-            for (const clip of clips) {
-                if (clip.width && clip.height) {
-                    outputWidth = clip.width;
-                    outputHeight = clip.height;
-                    break;
+            let outputWidth = 0;
+            let outputHeight = 0;
+            if (!clips.length) {
+                return { outputWidth, outputHeight };
+            }
+            const firstClip = clips[0];
+            if (firstClip && firstClip.width && firstClip.height) {
+                if (firstClip.cropRect && firstClip.cropRect.w > 0 && firstClip.cropRect.h > 0) {
+                    const safeCrop = clampCropRect(firstClip.cropRect, firstClip.width, firstClip.height);
+                    outputWidth = safeCrop.w;
+                    outputHeight = safeCrop.h;
+                } else {
+                    outputWidth = firstClip.width;
+                    outputHeight = firstClip.height;
+                }
+            }
+            if (!outputWidth || !outputHeight) {
+                for (const clip of clips) {
+                    if (clip.width && clip.height) {
+                        outputWidth = clip.width;
+                        outputHeight = clip.height;
+                        break;
+                    }
                 }
             }
             return { outputWidth, outputHeight };
@@ -1527,7 +2222,7 @@
             const ctx = globalPreviewCanvas.getContext('2d');
             globalPreviewCanvas.width = outputWidth;
             globalPreviewCanvas.height = outputHeight;
-            drawFrameToCanvas(ctx, frame, outputWidth, outputHeight);
+            drawFrameToCanvas(ctx, frame, outputWidth, outputHeight, selected.clip.cropRect);
             globalPreviewCounter.textContent = `${clamped + 1} / ${merged.totalFrames}`;
             globalPreviewScrubber.value = String(clamped);
             ensureCropRect(outputWidth, outputHeight);
@@ -1555,6 +2250,7 @@
         let cropDragState = null;
         let cropRaf = null;
         let cropPendingEvent = null;
+        let clipCropDragState = null;
 
         function ensureCropRect(width, height) {
             if (cropRect && cropRect.w > 0 && cropRect.h > 0) return;
@@ -1563,7 +2259,7 @@
             cropRect = { x: 0, y: 0, w: width, h: cropHeight };
         }
 
-        function updateCropOverlay(updateInputs = true) {
+        function updateCropOverlay() {
             if (!cropRect || !globalPreviewCanvas) return;
             const canvasRect = globalPreviewCanvas.getBoundingClientRect();
             const stageRect = previewStage.getBoundingClientRect();
@@ -1572,47 +2268,46 @@
             const scaleY = canvasRect.height / globalPreviewCanvas.height;
             const offsetX = canvasRect.left - stageRect.left;
             const offsetY = canvasRect.top - stageRect.top;
+            const canvasWidthPx = Math.round(canvasRect.width);
+            const canvasHeightPx = Math.round(canvasRect.height);
+            const overlayLeft = Math.round(offsetX + cropRect.x * scaleX);
+            const overlayTop = Math.round(offsetY + cropRect.y * scaleY);
+            const overlayWidth = Math.round(cropRect.w * scaleX);
+            const overlayHeight = Math.round(cropRect.h * scaleY);
             cropOverlay.style.display = 'block';
-            cropOverlay.style.left = `${offsetX + cropRect.x * scaleX}px`;
-            cropOverlay.style.top = `${offsetY + cropRect.y * scaleY}px`;
-            cropOverlay.style.width = `${cropRect.w * scaleX}px`;
-            cropOverlay.style.height = `${cropRect.h * scaleY}px`;
+            cropOverlay.style.left = `${overlayLeft}px`;
+            cropOverlay.style.top = `${overlayTop}px`;
+            cropOverlay.style.width = `${overlayWidth}px`;
+            cropOverlay.style.height = `${overlayHeight}px`;
             if (cropShade) {
                 cropShade.style.display = 'block';
-                cropShade.style.left = `${offsetX}px`;
-                cropShade.style.top = `${offsetY}px`;
-                cropShade.style.width = `${canvasRect.width}px`;
-                cropShade.style.height = `${canvasRect.height}px`;
-                const topH = cropRect.y * scaleY;
-                const bottomH = (globalPreviewCanvas.height - (cropRect.y + cropRect.h)) * scaleY;
-                const leftW = cropRect.x * scaleX;
-                const rightW = (globalPreviewCanvas.width - (cropRect.x + cropRect.w)) * scaleX;
+                cropShade.style.left = `${Math.round(offsetX)}px`;
+                cropShade.style.top = `${Math.round(offsetY)}px`;
+                cropShade.style.width = `${canvasWidthPx}px`;
+                cropShade.style.height = `${canvasHeightPx}px`;
+                const topH = Math.round(cropRect.y * scaleY);
+                const leftW = Math.round(cropRect.x * scaleX);
+                const bottomH = Math.max(0, canvasHeightPx - (topH + overlayHeight));
+                const rightW = Math.max(0, canvasWidthPx - (leftW + overlayWidth));
                 shadeTop.style.left = '0px';
                 shadeTop.style.top = '0px';
                 shadeTop.style.width = '100%';
                 shadeTop.style.height = `${Math.max(0, topH)}px`;
                 shadeBottom.style.left = '0px';
-                shadeBottom.style.top = `${Math.max(0, topH + cropRect.h * scaleY)}px`;
+                shadeBottom.style.top = `${Math.max(0, topH + overlayHeight)}px`;
                 shadeBottom.style.width = '100%';
                 shadeBottom.style.height = `${Math.max(0, bottomH)}px`;
                 shadeLeft.style.left = '0px';
                 shadeLeft.style.top = `${Math.max(0, topH)}px`;
                 shadeLeft.style.width = `${Math.max(0, leftW)}px`;
-                shadeLeft.style.height = `${Math.max(0, cropRect.h * scaleY)}px`;
-                shadeRight.style.left = `${Math.max(0, leftW + cropRect.w * scaleX)}px`;
+                shadeLeft.style.height = `${Math.max(0, overlayHeight)}px`;
+                shadeRight.style.left = `${Math.max(0, leftW + overlayWidth)}px`;
                 shadeRight.style.top = `${Math.max(0, topH)}px`;
                 shadeRight.style.width = `${Math.max(0, rightW)}px`;
-                shadeRight.style.height = `${Math.max(0, cropRect.h * scaleY)}px`;
-            }
-            if (updateInputs) {
-                const maxW = globalPreviewCanvas.width || 0;
-                const maxH = globalPreviewCanvas.height || 0;
-                cropTopInput.value = Math.round(cropRect.y);
-                cropLeftInput.value = Math.round(cropRect.x);
-                cropBottomInput.value = Math.max(0, Math.round(maxH - (cropRect.y + cropRect.h)));
-                cropRightInput.value = Math.max(0, Math.round(maxW - (cropRect.x + cropRect.w)));
+                shadeRight.style.height = `${Math.max(0, overlayHeight)}px`;
             }
             updateSizeEstimate(); // Update estimate when crop changes
+            updateAllClipMergeShades();
         }
 
         function hideCropOverlay() {
@@ -1620,29 +2315,319 @@
             if (cropShade) cropShade.style.display = 'none';
         }
 
-        function updateCropFromInputs() {
-            if (!cropRect) return;
-            const maxW = globalPreviewCanvas.width || 0;
-            const maxH = globalPreviewCanvas.height || 0;
-            const top = Math.max(0, Math.min(parseInt(cropTopInput.value, 10) || 0, maxH - 1));
-            const bottom = Math.max(0, Math.min(parseInt(cropBottomInput.value, 10) || 0, maxH - 1));
-            const left = Math.max(0, Math.min(parseInt(cropLeftInput.value, 10) || 0, maxW - 1));
-            const right = Math.max(0, Math.min(parseInt(cropRightInput.value, 10) || 0, maxW - 1));
-
-            const x = Math.min(left, maxW - 1);
-            const y = Math.min(top, maxH - 1);
-            const w = Math.max(1, maxW - left - right);
-            const h = Math.max(1, maxH - top - bottom);
-            cropRect = clampCropRect({ x, y, w, h }, maxW, maxH);
-            updateCropOverlay();
+        function clampCropRect(rect, maxW, maxH) {
+            let x = Math.max(0, Math.min(rect.x, maxW - 1));
+            let y = Math.max(0, Math.min(rect.y, maxH - 1));
+            let w = Math.max(1, Math.min(rect.w, maxW - x));
+            let h = Math.max(1, Math.min(rect.h, maxH - y));
+            x = Math.round(x);
+            y = Math.round(y);
+            w = Math.round(w);
+            h = Math.round(h);
+            w = Math.max(1, Math.min(w, maxW - x));
+            h = Math.max(1, Math.min(h, maxH - y));
+            return { x, y, w, h };
         }
 
-        function clampCropRect(rect, maxW, maxH) {
-            const x = Math.max(0, Math.min(rect.x, maxW - 1));
-            const y = Math.max(0, Math.min(rect.y, maxH - 1));
-            const w = Math.max(1, Math.min(rect.w, maxW - x));
-            const h = Math.max(1, Math.min(rect.h, maxH - y));
+        function isCornerHandle(handle) {
+            return handle
+                && (handle.includes('l') || handle.includes('r'))
+                && (handle.includes('t') || handle.includes('b'));
+        }
+
+        function applyCornerAspect(rect, maxW, maxH, handle, dx, dy, ratio) {
+            if (!isCornerHandle(handle)) return rect;
+            if (!Number.isFinite(ratio) || ratio <= 0) return rect;
+            const anchorX = handle.includes('l') ? rect.x + rect.w : rect.x;
+            const anchorY = handle.includes('t') ? rect.y + rect.h : rect.y;
+            let dragX = handle.includes('l') ? rect.x : rect.x + rect.w;
+            let dragY = handle.includes('t') ? rect.y : rect.y + rect.h;
+            let width = Math.max(1, Math.abs(anchorX - dragX));
+            let height = Math.max(1, Math.abs(anchorY - dragY));
+            const useWidth = Math.abs(dx) >= Math.abs(dy);
+
+            if (useWidth) {
+                height = width / ratio;
+            } else {
+                width = height * ratio;
+            }
+
+            const maxWidth = handle.includes('l') ? anchorX : (maxW - anchorX);
+            const maxHeight = handle.includes('t') ? anchorY : (maxH - anchorY);
+            if (width > maxWidth) {
+                width = maxWidth;
+                height = width / ratio;
+            }
+            if (height > maxHeight) {
+                height = maxHeight;
+                width = height * ratio;
+            }
+
+            dragX = handle.includes('l') ? anchorX - width : anchorX + width;
+            dragY = handle.includes('t') ? anchorY - height : anchorY + height;
+            const x = Math.min(anchorX, dragX);
+            const y = Math.min(anchorY, dragY);
+            const w = Math.abs(anchorX - dragX);
+            const h = Math.abs(anchorY - dragY);
             return { x, y, w, h };
+        }
+
+        function ensureClipCropRect(clip, width, height) {
+            if (clip.cropRect && clip.cropRect.w > 0 && clip.cropRect.h > 0) return;
+            clip.cropRect = { x: 0, y: 0, w: width, h: height };
+        }
+
+
+        function updateAllClipMergeShades() {
+            clips.forEach(clip => {
+                if (clip.viewerOpen && clip.frames && clip.frames.length) {
+                    updateClipMergeShade(clip);
+                }
+            });
+        }
+
+        function getClipLocalCropRect(clip, maxW, maxH) {
+            if (clip.cropRect && clip.cropRect.w > 0 && clip.cropRect.h > 0) {
+                return clampCropRect(clip.cropRect, maxW, maxH);
+            }
+            return { x: 0, y: 0, w: maxW, h: maxH };
+        }
+
+        function updateClipMergeShade(clip) {
+            const canvas = document.getElementById(`frameCanvas-${clip.id}`);
+            const stage = document.getElementById(`clipPreviewStage-${clip.id}`);
+            const shade = document.getElementById(`clipMergeShade-${clip.id}`);
+            if (!canvas || !stage || !shade || !cropRect || clip === clips[0]) {
+                if (shade) shade.style.display = 'none';
+                return;
+            }
+            const shadeTopLocal = document.getElementById(`clipMergeShadeTop-${clip.id}`);
+            const shadeBottomLocal = document.getElementById(`clipMergeShadeBottom-${clip.id}`);
+            const shadeLeftLocal = document.getElementById(`clipMergeShadeLeft-${clip.id}`);
+            const shadeRightLocal = document.getElementById(`clipMergeShadeRight-${clip.id}`);
+            const { outputWidth, outputHeight } = getOutputDimensions();
+            if (!outputWidth || !outputHeight) return;
+            const canvasRect = canvas.getBoundingClientRect();
+            const stageRect = stage.getBoundingClientRect();
+            if (!canvasRect.width || !canvasRect.height) return;
+
+            const localCrop = getClipLocalCropRect(clip, canvas.width, canvas.height);
+            const scale = outputWidth / localCrop.w;
+            if (!Number.isFinite(scale) || scale <= 0) return;
+            const globalCrop = clampCropRect(cropRect, outputWidth, outputHeight);
+            const mapped = {
+                x: localCrop.x + (globalCrop.x / scale),
+                y: localCrop.y + (globalCrop.y / scale),
+                w: globalCrop.w / scale,
+                h: globalCrop.h / scale
+            };
+            const mappedSafe = clampCropRect(mapped, canvas.width, canvas.height);
+
+            const scaleX = canvasRect.width / canvas.width;
+            const scaleY = canvasRect.height / canvas.height;
+            const offsetX = canvasRect.left - stageRect.left;
+            const offsetY = canvasRect.top - stageRect.top;
+            const canvasWidthPx = Math.round(canvasRect.width);
+            const canvasHeightPx = Math.round(canvasRect.height);
+            const mappedLeft = Math.round(mappedSafe.x * scaleX);
+            const mappedTop = Math.round(mappedSafe.y * scaleY);
+            const mappedWidth = Math.round(mappedSafe.w * scaleX);
+            const mappedHeight = Math.round(mappedSafe.h * scaleY);
+
+            shade.style.display = 'block';
+            shade.style.left = `${Math.round(offsetX)}px`;
+            shade.style.top = `${Math.round(offsetY)}px`;
+            shade.style.width = `${canvasWidthPx}px`;
+            shade.style.height = `${canvasHeightPx}px`;
+
+            const topH = mappedTop;
+            const leftW = mappedLeft;
+            const bottomH = Math.max(0, canvasHeightPx - (mappedTop + mappedHeight));
+            const rightW = Math.max(0, canvasWidthPx - (mappedLeft + mappedWidth));
+            shadeTopLocal.style.left = '0px';
+            shadeTopLocal.style.top = '0px';
+            shadeTopLocal.style.width = '100%';
+            shadeTopLocal.style.height = `${Math.max(0, topH)}px`;
+            shadeBottomLocal.style.left = '0px';
+            shadeBottomLocal.style.top = `${Math.max(0, topH + mappedHeight)}px`;
+            shadeBottomLocal.style.width = '100%';
+            shadeBottomLocal.style.height = `${Math.max(0, bottomH)}px`;
+            shadeLeftLocal.style.left = '0px';
+            shadeLeftLocal.style.top = `${Math.max(0, topH)}px`;
+            shadeLeftLocal.style.width = `${Math.max(0, leftW)}px`;
+            shadeLeftLocal.style.height = `${Math.max(0, mappedHeight)}px`;
+            shadeRightLocal.style.left = `${Math.max(0, leftW + mappedWidth)}px`;
+            shadeRightLocal.style.top = `${Math.max(0, topH)}px`;
+            shadeRightLocal.style.width = `${Math.max(0, rightW)}px`;
+            shadeRightLocal.style.height = `${Math.max(0, mappedHeight)}px`;
+        }
+
+        function updateClipCropOverlay(clip) {
+            const canvas = document.getElementById(`frameCanvas-${clip.id}`);
+            const stage = document.getElementById(`clipPreviewStage-${clip.id}`);
+            const overlay = document.getElementById(`clipCropOverlay-${clip.id}`);
+            const shade = document.getElementById(`clipCropShade-${clip.id}`);
+            if (!canvas || !stage || !overlay || !shade || !clip.cropRect) return;
+            const shadeTopLocal = document.getElementById(`clipShadeTop-${clip.id}`);
+            const shadeBottomLocal = document.getElementById(`clipShadeBottom-${clip.id}`);
+            const shadeLeftLocal = document.getElementById(`clipShadeLeft-${clip.id}`);
+            const shadeRightLocal = document.getElementById(`clipShadeRight-${clip.id}`);
+            const canvasRect = canvas.getBoundingClientRect();
+            const stageRect = stage.getBoundingClientRect();
+            if (!canvasRect.width || !canvasRect.height) return;
+            const scaleX = canvasRect.width / canvas.width;
+            const scaleY = canvasRect.height / canvas.height;
+            const offsetX = canvasRect.left - stageRect.left;
+            const offsetY = canvasRect.top - stageRect.top;
+            const canvasWidthPx = Math.round(canvasRect.width);
+            const canvasHeightPx = Math.round(canvasRect.height);
+            const overlayLeft = Math.round(offsetX + clip.cropRect.x * scaleX);
+            const overlayTop = Math.round(offsetY + clip.cropRect.y * scaleY);
+            const overlayWidth = Math.round(clip.cropRect.w * scaleX);
+            const overlayHeight = Math.round(clip.cropRect.h * scaleY);
+
+            overlay.style.display = 'block';
+            overlay.style.left = `${overlayLeft}px`;
+            overlay.style.top = `${overlayTop}px`;
+            overlay.style.width = `${overlayWidth}px`;
+            overlay.style.height = `${overlayHeight}px`;
+
+            shade.style.display = 'block';
+            shade.style.left = `${Math.round(offsetX)}px`;
+            shade.style.top = `${Math.round(offsetY)}px`;
+            shade.style.width = `${canvasWidthPx}px`;
+            shade.style.height = `${canvasHeightPx}px`;
+            const topH = Math.round(clip.cropRect.y * scaleY);
+            const leftW = Math.round(clip.cropRect.x * scaleX);
+            const bottomH = Math.max(0, canvasHeightPx - (topH + overlayHeight));
+            const rightW = Math.max(0, canvasWidthPx - (leftW + overlayWidth));
+            shadeTopLocal.style.left = '0px';
+            shadeTopLocal.style.top = '0px';
+            shadeTopLocal.style.width = '100%';
+            shadeTopLocal.style.height = `${Math.max(0, topH)}px`;
+            shadeBottomLocal.style.left = '0px';
+            shadeBottomLocal.style.top = `${Math.max(0, topH + overlayHeight)}px`;
+            shadeBottomLocal.style.width = '100%';
+            shadeBottomLocal.style.height = `${Math.max(0, bottomH)}px`;
+            shadeLeftLocal.style.left = '0px';
+            shadeLeftLocal.style.top = `${Math.max(0, topH)}px`;
+            shadeLeftLocal.style.width = `${Math.max(0, leftW)}px`;
+            shadeLeftLocal.style.height = `${Math.max(0, overlayHeight)}px`;
+            shadeRightLocal.style.left = `${Math.max(0, leftW + overlayWidth)}px`;
+            shadeRightLocal.style.top = `${Math.max(0, topH)}px`;
+            shadeRightLocal.style.width = `${Math.max(0, rightW)}px`;
+            shadeRightLocal.style.height = `${Math.max(0, overlayHeight)}px`;
+            updateClipThumbnails(clip);
+        }
+
+        function startClipCropDrag(clip, e, handle) {
+            if (!clip.cropRect) return;
+            e.preventDefault();
+            const canvas = document.getElementById(`frameCanvas-${clip.id}`);
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            clipCropDragState = {
+                clip,
+                handle,
+                startX: e.clientX,
+                startY: e.clientY,
+                orig: { ...clip.cropRect },
+                scaleX: canvas.width / rect.width,
+                scaleY: canvas.height / rect.height,
+                lockAspect: !!e.shiftKey,
+                aspectRatio: clip.cropRect.w / clip.cropRect.h
+            };
+        }
+
+        function processClipCropDrag(e) {
+            if (!clipCropDragState) return;
+            const { clip } = clipCropDragState;
+            const canvas = document.getElementById(`frameCanvas-${clip.id}`);
+            if (!canvas) return;
+            const dx = (e.clientX - clipCropDragState.startX) * clipCropDragState.scaleX;
+            const dy = (e.clientY - clipCropDragState.startY) * clipCropDragState.scaleY;
+            const maxW = canvas.width;
+            const maxH = canvas.height;
+            let rect = { ...clipCropDragState.orig };
+
+            if (clipCropDragState.handle === 'move') {
+                rect.x += dx;
+                rect.y += dy;
+            } else {
+                if (clipCropDragState.handle.includes('l')) {
+                    rect.x += dx;
+                    rect.w -= dx;
+                }
+                if (clipCropDragState.handle.includes('r')) {
+                    rect.w += dx;
+                }
+                if (clipCropDragState.handle.includes('t')) {
+                    rect.y += dy;
+                    rect.h -= dy;
+                }
+                if (clipCropDragState.handle.includes('b')) {
+                    rect.h += dy;
+                }
+            }
+
+            if (rect.x < 0) {
+                if (clipCropDragState.handle === 'move') {
+                    rect.x = 0;
+                } else if (clipCropDragState.handle.includes('l')) {
+                    rect.w = clipCropDragState.orig.w + clipCropDragState.orig.x;
+                    rect.x = 0;
+                }
+            }
+            if (rect.y < 0) {
+                if (clipCropDragState.handle === 'move') {
+                    rect.y = 0;
+                } else if (clipCropDragState.handle.includes('t')) {
+                    rect.h = clipCropDragState.orig.h + clipCropDragState.orig.y;
+                    rect.y = 0;
+                }
+            }
+            if (rect.x + rect.w > maxW) {
+                if (clipCropDragState.handle === 'move') {
+                    rect.x = Math.max(0, maxW - rect.w);
+                } else if (clipCropDragState.handle.includes('r')) {
+                    rect.w = maxW - rect.x;
+                }
+            }
+            if (rect.y + rect.h > maxH) {
+                if (clipCropDragState.handle === 'move') {
+                    rect.y = Math.max(0, maxH - rect.h);
+                } else if (clipCropDragState.handle.includes('b')) {
+                    rect.h = maxH - rect.y;
+                }
+            }
+
+            rect.w = Math.max(1, rect.w);
+            rect.h = Math.max(1, rect.h);
+            if (clipCropDragState.lockAspect && isCornerHandle(clipCropDragState.handle)) {
+                rect = applyCornerAspect(
+                    rect,
+                    maxW,
+                    maxH,
+                    clipCropDragState.handle,
+                    dx,
+                    dy,
+                    clipCropDragState.aspectRatio
+                );
+            }
+            clip.cropRect = clampCropRect(rect, maxW, maxH);
+            clipCropDragState.startX = e.clientX;
+            clipCropDragState.startY = e.clientY;
+            clipCropDragState.orig = { ...clip.cropRect };
+            updateClipCropOverlay(clip);
+            updateClipMergeShade(clip);
+        }
+
+        function endClipCropDrag() {
+            if (clipCropDragState) {
+                clipCropDragState = null;
+                syncCropToOutput();
+                refreshGlobalPreviewForClipChange();
+            }
         }
 
         function startCropDrag(e, handle) {
@@ -1655,7 +2640,9 @@
                 startY: e.clientY,
                 orig: { ...cropRect },
                 scaleX: globalPreviewCanvas.width / rect.width,
-                scaleY: globalPreviewCanvas.height / rect.height
+                scaleY: globalPreviewCanvas.height / rect.height,
+                lockAspect: !!e.shiftKey,
+                aspectRatio: cropRect.w / cropRect.h
             };
         }
 
@@ -1718,11 +2705,22 @@
             }
             rect.w = Math.max(1, rect.w);
             rect.h = Math.max(1, rect.h);
+            if (cropDragState.lockAspect && isCornerHandle(cropDragState.handle)) {
+                rect = applyCornerAspect(
+                    rect,
+                    maxW,
+                    maxH,
+                    cropDragState.handle,
+                    dx,
+                    dy,
+                    cropDragState.aspectRatio
+                );
+            }
             cropRect = clampCropRect(rect, maxW, maxH);
             cropDragState.startX = e.clientX;
             cropDragState.startY = e.clientY;
             cropDragState.orig = { ...cropRect };
-            updateCropOverlay(false);
+            updateCropOverlay();
         }
 
         function scheduleCropUpdate(e) {
@@ -1745,7 +2743,7 @@
                     cancelAnimationFrame(cropRaf);
                     cropRaf = null;
                 }
-                updateCropOverlay(true);
+                updateCropOverlay();
             }
         }
 
@@ -1762,9 +2760,19 @@
         });
         window.addEventListener('pointermove', (e) => {
             if (cropDragState) processCropDrag(e);
+            if (clipCropDragState) processClipCropDrag(e);
+            if (dragContext) updateReorderDrag(e);
         });
-        window.addEventListener('pointerup', () => endCropDrag());
-        window.addEventListener('pointercancel', () => endCropDrag());
+        window.addEventListener('pointerup', () => {
+            endCropDrag();
+            endClipCropDrag();
+            if (dragContext) endReorderDrag();
+        });
+        window.addEventListener('pointercancel', () => {
+            endCropDrag();
+            endClipCropDrag();
+            if (dragContext) endReorderDrag();
+        });
         cropOverlay.addEventListener('touchstart', (e) => {
             if (!e.touches || !e.touches[0]) return;
             const touch = e.touches[0];
@@ -1865,10 +2873,13 @@
                         const segment = segments.find(seg => globalIndex >= seg.start && globalIndex <= seg.end);
                         if (!segment) return null;
                         const localIndex = segment.clip.startFrame + (globalIndex - segment.start);
-                        return segment.clip.frames[localIndex];
+                        return { frame: segment.clip.frames[localIndex], clip: segment.clip };
                     },
-                    drawFrame: (ctx, frame) => {
-                        drawFrameToCanvas(baseCtx, frame, outputWidth, outputHeight);
+                    drawFrame: (ctx, frameData) => {
+                        const sourceFrame = frameData.frame || frameData;
+                        const sourceClip = frameData.clip;
+                        const localCrop = sourceClip ? sourceClip.cropRect : null;
+                        drawFrameToCanvas(baseCtx, sourceFrame, outputWidth, outputHeight, localCrop);
                         // Draw cropped region and scale to final size
                         ctx.drawImage(
                             baseCanvas,
@@ -1941,7 +2952,7 @@
             }
         }
 
-        function drawFrameToCanvas(ctx, frame, outW, outH) {
+        function drawFrameToCanvas(ctx, frame, outW, outH, localCrop) {
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, outW, outH);
             const srcW = frame.width || frame.displayWidth || frame.codedWidth;
@@ -1950,11 +2961,22 @@
                 ctx.drawImage(frame, 0, 0, outW, outH);
                 return;
             }
-            const srcRatio = srcW / srcH;
+            let crop = null;
+            if (localCrop) {
+                crop = clampCropRect(localCrop, srcW, srcH);
+            }
+            const cropW = crop ? crop.w : srcW;
+            const cropH = crop ? crop.h : srcH;
+            const srcRatio = cropW / cropH;
             const drawW = outW;
             const drawH = outW / srcRatio;
-            ctx.drawImage(frame, 0, 0, drawW, drawH);
+            if (crop) {
+                ctx.drawImage(frame, crop.x, crop.y, cropW, cropH, 0, 0, drawW, drawH);
+            } else {
+                ctx.drawImage(frame, 0, 0, drawW, drawH);
+            }
         }
+
 
     </script>
 </body>
