@@ -213,6 +213,7 @@
             display: flex;
             gap: 12px;
             align-items: stretch;
+            touch-action: pan-y;
         }
 
         #clipList.list .clip-card {
@@ -239,16 +240,19 @@
         .clip-thumb-wrap {
             width: 100%;
             height: 72px;
-            background: #000;
             border-radius: 4px;
+            border: 1px solid #ddd;
             overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .clip-thumb {
-            width: 100%;
-            height: 100%;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
             display: block;
             pointer-events: none;
         }
@@ -303,6 +307,7 @@
             flex-direction: column;
             gap: 8px;
             position: relative;
+            touch-action: none;
         }
 
         .clip-tile:active {
@@ -312,16 +317,19 @@
         .clip-tile-thumb {
             width: 100%;
             aspect-ratio: 4 / 3;
-            background: #000;
             border-radius: 4px;
+            border: 1px solid #ddd;
             overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .clip-tile canvas {
-            width: 100%;
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
             height: auto;
-            border: 1px solid #ddd;
-            border-radius: 4px;
             display: block;
             pointer-events: none;
         }
@@ -581,10 +589,15 @@
         }
 
         .frame-controls input[type="number"] {
-            width: 75px;
+            width: 60px;
             height: 44px;
             text-align: center;
             font-size: 16px;
+        }
+
+        .modal .frame-controls input[type="number"] {
+            font-size: 14px;
+            padding: 0 4px;
         }
 
         .frame-range-row {
@@ -1315,11 +1328,13 @@
                 if (viewMode === 'grid') {
                     const tile = createGridTile(clip, index);
                     clipList.appendChild(tile);
+                    updateClipThumbnails(clip);
                     return;
                 }
                 const card = createListCard(clip, index, { showActions: true, detailed: false });
                 attachClipCardHandlers(card, clip, index, { allowActions: true, inModal: false });
                 clipList.appendChild(card);
+                updateClipThumbnails(clip);
             });
             refreshGlobalPreview();
             syncCropToOutput();
@@ -1388,7 +1403,7 @@
         }
 
         function startReorderDrag(e, clip, element, requireHandle) {
-            if (e.button !== 0) return;
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
             const handleEl = e.target.closest('[data-drag-handle]');
             if (requireHandle && !handleEl) {
                 return;
@@ -1416,7 +1431,9 @@
             if (e.pointerId !== undefined) {
                 element.setPointerCapture(e.pointerId);
             }
-            e.preventDefault();
+            if (e.pointerType === 'touch') {
+                e.preventDefault();
+            }
         }
 
         function updateReorderDrag(e) {
@@ -1531,7 +1548,9 @@
             ` : '';
             card.innerHTML = `
                 ${showThumb ? `<div class="clip-left">
-                    <canvas class="clip-thumb" id="thumbCanvas-${clip.id}"></canvas>
+                    <div class="clip-thumb-wrap">
+                        <canvas class="clip-thumb" id="thumbCanvas-${clip.id}"></canvas>
+                    </div>
                 </div>` : ''}
                 <div class="clip-body">
                     <div class="clip-header">
@@ -1567,7 +1586,9 @@
             tile.className = 'clip-tile';
             tile.dataset.id = clip.id;
             tile.innerHTML = `
-                <canvas id="gridThumb-${clip.id}"></canvas>
+                <div class="clip-tile-thumb">
+                    <canvas id="gridThumb-${clip.id}"></canvas>
+                </div>
                 <div class="clip-tile-title">${clip.name}</div>
             `;
             const editBtn = document.createElement('button');
@@ -1734,31 +1755,11 @@
         }
 
         function getCanvasTargetSize(canvas, fallbackWidth, fallbackHeight) {
-            const rect = canvas.getBoundingClientRect();
+            const target = canvas.parentElement || canvas;
+            const rect = target.getBoundingClientRect();
             const width = Math.max(1, Math.round(rect.width || fallbackWidth));
             const height = Math.max(1, Math.round(rect.height || fallbackHeight));
             return { width, height };
-        }
-
-        function getCoverCrop(srcW, srcH, targetW, targetH) {
-            const srcRatio = srcW / srcH;
-            const targetRatio = targetW / targetH;
-            if (srcRatio > targetRatio) {
-                const cropW = srcH * targetRatio;
-                return {
-                    x: (srcW - cropW) / 2,
-                    y: 0,
-                    w: cropW,
-                    h: srcH
-                };
-            }
-            const cropH = srcW / targetRatio;
-            return {
-                x: 0,
-                y: (srcH - cropH) / 2,
-                w: srcW,
-                h: cropH
-            };
         }
 
         function drawClipThumbnail(canvas, clip, maxWidth, maxHeight) {
@@ -1770,15 +1771,15 @@
             const srcW = crop ? crop.w : frame.width;
             const srcH = crop ? crop.h : frame.height;
             const { width, height } = getCanvasTargetSize(canvas, maxWidth, maxHeight || maxWidth);
-            canvas.width = width;
-            canvas.height = height;
+            const scale = Math.min(width / srcW, height / srcH);
+            const outW = Math.max(1, Math.round(srcW * scale));
+            const outH = Math.max(1, Math.round(srcH * scale));
+            canvas.width = outW;
+            canvas.height = outH;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, width, height);
-            const cover = getCoverCrop(srcW, srcH, width, height);
-            const srcX = (crop ? crop.x : 0) + cover.x;
-            const srcY = (crop ? crop.y : 0) + cover.y;
-            ctx.drawImage(frame, srcX, srcY, cover.w, cover.h, 0, 0, width, height);
+            const srcX = crop ? crop.x : 0;
+            const srcY = crop ? crop.y : 0;
+            ctx.drawImage(frame, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
         }
 
         function updateClipThumbnails(clip) {
@@ -1959,6 +1960,7 @@
                     if (clip.viewerOpen && clip.frames && clip.frames.length) {
                         drawClipFrame(clip);
                     }
+                    updateClipThumbnails(clip);
                 });
                 refreshGlobalPreviewForClipChange();
             });
