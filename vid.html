@@ -24,6 +24,11 @@
             background: #f5f5f5;
         }
 
+        body.drag-active {
+            overflow: hidden;
+            touch-action: none;
+        }
+
         @media (min-width: 768px) {
             body {
                 margin: 40px auto;
@@ -1398,6 +1403,7 @@
             if (dragPlaceholder && dragPlaceholder.parentNode) {
                 dragPlaceholder.parentNode.removeChild(dragPlaceholder);
             }
+            document.body.classList.remove('drag-active');
             dragContext = null;
             dragPlaceholder = null;
         }
@@ -1421,6 +1427,7 @@
             dragPlaceholder = createDragPlaceholder(element);
             element.parentNode.insertBefore(dragPlaceholder, element.nextSibling);
             element.classList.add('dragging');
+            document.body.classList.add('drag-active');
             element.style.position = 'fixed';
             element.style.left = `${Math.round(rect.left)}px`;
             element.style.top = `${Math.round(rect.top)}px`;
