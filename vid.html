@@ -1126,6 +1126,7 @@
         let viewMode = 'list';
         let dragContext = null;
         let dragPlaceholder = null;
+        let dragTouchBlocker = null;
 
         // Will be initialized after helper functions are defined
         let previewPlayback;
@@ -1404,6 +1405,10 @@
                 dragPlaceholder.parentNode.removeChild(dragPlaceholder);
             }
             document.body.classList.remove('drag-active');
+            if (dragTouchBlocker) {
+                window.removeEventListener('touchmove', dragTouchBlocker);
+                dragTouchBlocker = null;
+            }
             dragContext = null;
             dragPlaceholder = null;
         }
@@ -1439,6 +1444,12 @@
                 element.setPointerCapture(e.pointerId);
             }
             if (e.pointerType === 'touch') {
+                dragTouchBlocker = (evt) => {
+                    if (dragContext) {
+                        evt.preventDefault();
+                    }
+                };
+                window.addEventListener('touchmove', dragTouchBlocker, { passive: false });
                 e.preventDefault();
             }
         }
