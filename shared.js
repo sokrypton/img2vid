@@ -1834,14 +1834,21 @@ async function encodeGif(options) {
 }
 
 async function encodeMp4(options) {
-    const width = options.width;
-    const height = options.height;
+    // H.264 encoders require dimensions divisible by 2 (safety check)
+    // This should already be handled upstream, but we double-check here
+    const width = Math.round(options.width / 2) * 2;
+    const height = Math.round(options.height / 2) * 2;
     const fps = options.fps;
     const bitrate = options.bitrate || 5000000; // Default 5 Mbps
     const frameCount = options.frameCount;
     const getFrame = options.getFrame;
     const drawFrame = options.drawFrame;
     const onProgress = options.onProgress;
+
+    if (width !== options.width || height !== options.height) {
+        console.warn(`⚠️ SAFETY CHECK: Adjusted dimensions for H.264 encoding: ${options.width}x${options.height} → ${width}x${height}`);
+        console.warn('This should have been handled upstream. Please check getOutputDimensions()');
+    }
 
     // Try H.264/MP4 first, fallback to VP9/WebM if not supported
     const h264Config = {
@@ -1855,12 +1862,24 @@ async function encodeMp4(options) {
         avc: { format: 'avc' }
     };
 
+    console.log('🔍 Checking H.264 encoder support with config:', {
+        codec: h264Config.codec,
+        width: h264Config.width,
+        height: h264Config.height,
+        framerate: h264Config.framerate,
+        bitrate: h264Config.bitrate
+    });
+
     let useMP4 = true;
     if (VideoEncoder.isConfigSupported) {
         const support = await VideoEncoder.isConfigSupported(h264Config);
+        console.log('📊 H.264 encoder support result:', support);
         if (!support.supported) {
-            console.warn('⚠️ H.264 not supported, falling back to VP9/WebM');
+            console.warn('⚠️ H.264 encoding NOT supported for this configuration, falling back to VP9/WebM');
+            console.warn('❌ Reason: Encoder rejected config with width=' + width + ', height=' + height + ', fps=' + fps);
             useMP4 = false;
+        } else {
+            console.log('✅ H.264 encoding IS supported for this configuration');
         }
     }
 

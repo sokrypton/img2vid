@@ -182,8 +182,8 @@
 
         .clip-list.grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+            gap: 10px;
         }
 
         .view-controls {
@@ -236,6 +236,7 @@
             cursor: grab;
             touch-action: none;
             padding: 8px;
+            align-items: center;
         }
 
         #clipList.grid .clip-card:active {
@@ -256,7 +257,7 @@
         }
 
         #clipList.grid .clip-left {
-            width: 100%;
+            width: 96px;
         }
 
         #clipList.grid .clip-body {
@@ -275,8 +276,8 @@
         }
 
         #clipList.grid .clip-thumb-wrap {
-            height: auto;
-            aspect-ratio: 4 / 3;
+            height: 72px;
+            aspect-ratio: auto;
         }
 
         .clip-thumb {
@@ -1722,7 +1723,7 @@
         function updateClipThumbnails(clip) {
             const listThumb = document.getElementById(`thumbCanvas-${clip.id}`);
             if (listThumb && clip.frames && clip.frames.length) {
-                drawClipThumbnail(listThumb, clip, 220, 165);
+                drawClipThumbnail(listThumb, clip, 96, 72);
             }
         }
 
@@ -2117,6 +2118,18 @@
                     }
                 }
             }
+
+            // Ensure even dimensions for H.264 encoding compatibility
+            // H.264 requires dimensions divisible by 2
+            if (outputWidth % 2 !== 0) {
+                console.log(`📐 Adjusted output width: ${outputWidth} → ${outputWidth - 1} (H.264 requires even dimensions)`);
+                outputWidth -= 1;
+            }
+            if (outputHeight % 2 !== 0) {
+                console.log(`📐 Adjusted output height: ${outputHeight} → ${outputHeight - 1} (H.264 requires even dimensions)`);
+                outputHeight -= 1;
+            }
+
             return { outputWidth, outputHeight };
         }
 
@@ -2851,6 +2864,12 @@
                     blob = await encodeMp4(encodeOptions);
                     // Check actual format (may have fallen back to WebM)
                     actualFormat = blob._format || 'mp4';
+
+                    // Warn user if MP4 encoding fell back to WebM
+                    if (actualFormat === 'webm') {
+                        console.warn('⚠️ MP4 encoding not supported - exported as WebM instead');
+                        alert('⚠️ MP4 encoding failed (likely due to video dimensions or browser limitations).\n\nExported as WebM instead.\n\nCheck console for details.');
+                    }
                 } else if (format === 'gif') {
                     encodeOptions.gifQuality = quality;
                     encodeOptions.gifDither = dither;
