@@ -1341,6 +1341,40 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
     let decodedCount = 0;
     let lastTimestamp = -1;
     let duplicateTimestampCount = 0;
+    const checkDuplicates = options.checkDuplicates !== false;
+    let lastHash = null;
+    const frameHashes = [];
+    let sampleCanvas = null;
+    let sampleCtx = null;
+    const sampleWidth = 9;
+    const sampleHeight = 8;
+
+    const ensureSampleContext = () => {
+        if (sampleCtx) return;
+        sampleCanvas = document.createElement('canvas');
+        sampleCanvas.width = sampleWidth;
+        sampleCanvas.height = sampleHeight;
+        sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+    };
+
+    const computeFrameHash = (bitmap) => {
+        ensureSampleContext();
+        if (!sampleCtx) return '';
+        sampleCtx.clearRect(0, 0, sampleWidth, sampleHeight);
+        sampleCtx.drawImage(bitmap, 0, 0, sampleWidth, sampleHeight);
+        const data = sampleCtx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+        let hash = '';
+        for (let y = 0; y < sampleHeight; y++) {
+            for (let x = 0; x < sampleWidth - 1; x++) {
+                const idx = (y * sampleWidth + x) * 4;
+                const idxNext = idx + 4;
+                const luma = data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
+                const lumaNext = data[idxNext] * 0.299 + data[idxNext + 1] * 0.587 + data[idxNext + 2] * 0.114;
+                hash += luma < lumaNext ? '1' : '0';
+            }
+        }
+        return hash;
+    };
 
     // Track timestamps to detect frame loss
     const expectedTimestamps = demuxed.samples.map(s => s.timestampUs || 0);
@@ -1355,18 +1389,26 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
                     // Track received timestamp
                     receivedTimestamps.push(videoFrame.timestamp);
 
+                    const previousTimestamp = lastTimestamp;
                     // Detect duplicate timestamps (indicates decoder is outputting duplicate frames)
-                    if (videoFrame.timestamp === lastTimestamp) {
+                    if (videoFrame.timestamp === previousTimestamp) {
                         console.warn(`⚠️ Duplicate timestamp detected: ${videoFrame.timestamp}µs - frame ${decodedCount}`);
                         duplicateTimestampCount++;
                     }
-                    lastTimestamp = videoFrame.timestamp;
 
-                    if (shouldCapture) {
-                        // Convert VideoFrame to ImageBitmap for consistent storage
-                        const bitmap = await createImageBitmap(videoFrame);
-                        frames.push(bitmap);
+                    // Convert VideoFrame to ImageBitmap for consistent storage
+                    const bitmap = await createImageBitmap(videoFrame);
+                    if (checkDuplicates) {
+                        const hash = computeFrameHash(bitmap);
+                        frameHashes.push(hash);
+                        lastHash = hash;
                     }
+                    if (shouldCapture) {
+                        frames.push(bitmap);
+                    } else if (bitmap.close) {
+                        bitmap.close();
+                    }
+                    lastTimestamp = videoFrame.timestamp;
 
                     // CRITICAL: Close VideoFrame to prevent memory leak
                     videoFrame.close();
@@ -1480,7 +1522,37 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
                 console.log(`Received frames: ${receivedTimestamps.length}`);
                 console.log(`Stored frames: ${frames.length}`);
 
-                console.log(`📊 ${totalSamples} samples → ${frames.length} frames`);
+                if (checkDuplicates) {
+                    const uniqueHashes = new Set(frameHashes);
+                    const visualDuplicates = frameHashes.length - uniqueHashes.size;
+                    console.log(`📊 ${totalSamples} samples → ${frames.length} frames`);
+                    if (visualDuplicates > 0) {
+                        console.warn(`⚠️ VISUAL DUPLICATES: ${visualDuplicates} frames have identical visual content`);
+
+                        const hashMap = new Map();
+                        frameHashes.forEach((hash, idx) => {
+                            if (!hashMap.has(hash)) {
+                                hashMap.set(hash, []);
+                            }
+                            hashMap.get(hash).push(idx);
+                        });
+
+                        const duplicateGroups = Array.from(hashMap.entries())
+                            .filter(([hash, indices]) => indices.length > 1)
+                            .slice(0, 5);
+
+                        console.warn('Duplicate frame groups (frame indices):');
+                        duplicateGroups.forEach(([hash, indices]) => {
+                            console.warn(`  Hash ${hash}: frames ${indices.join(', ')}`);
+                        });
+
+                        if (hashMap.size > 5) {
+                            console.warn(`  ... and ${hashMap.size - 5} more groups`);
+                        }
+                    }
+                } else {
+                    console.log(`📊 ${totalSamples} samples → ${frames.length} frames`);
+                }
 
                 // Check for missing timestamps
                 const receivedSet = new Set(receivedTimestamps);
@@ -1509,8 +1581,15 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
                 }
 
                 // Summary
-                if (missingTimestamps.length === 0 && duplicateTimestampCount === 0 && unexpectedTimestamps.length === 0) {
+                const noTimestampIssues = missingTimestamps.length === 0
+                    && duplicateTimestampCount === 0
+                    && unexpectedTimestamps.length === 0;
+                const noVisualDupes = !checkDuplicates || new Set(frameHashes).size === frameHashes.length;
+
+                if (noTimestampIssues && noVisualDupes) {
                     console.log('✅ All frames decoded successfully!');
+                } else if (noTimestampIssues && checkDuplicates && !noVisualDupes) {
+                    console.warn('⚠️ All frames received but some have duplicate visual content (decoder may be struggling on this device)');
                 } else {
                     console.error('⚠️ Frame loss/duplication detected. Consider using playback method on this device.');
                 }
