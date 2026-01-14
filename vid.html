@@ -1242,7 +1242,16 @@
 
             const newClips = clips.filter(clip => !clip.frames);
             for (const clip of newClips) {
+                console.log('[decode] start clip', {
+                    name: clip.name,
+                    codec: clip.demuxed && clip.demuxed.codec,
+                    samples: clip.demuxed && clip.demuxed.samples ? clip.demuxed.samples.length : 0
+                });
                 await loadClipFrames(clip);
+                console.log('[decode] done clip', {
+                    name: clip.name,
+                    frames: clip.frames ? clip.frames.length : 0
+                });
                 clip.viewerOpen = true;
                 renderClips();
             }
@@ -1758,6 +1767,12 @@
             progressBar.style.width = '0%';
 
             try {
+                console.log('[decode] extractFramesWithMeta', {
+                    name: clip.name,
+                    codec: demuxed.codec,
+                    samples: demuxed.samples.length,
+                    fpsEstimate: fps
+                });
                 const result = await extractFramesWithMeta(clip.file, {
                     captureAll: true,
                     useWebCodecs: useWebCodecsToggle.checked,
@@ -1790,14 +1805,18 @@
                     clip.currentFrame = 0;
                     clip.totalFrames = result.frames.length || clip.totalFrames;
                     clip.endFrame = Math.min(clip.endFrame, clip.totalFrames - 1);
-                    clip.startFrame = Math.min(clip.startFrame, clip.totalFrames - 1);
-                    if (!clip.activeHandle) {
-                        clip.activeHandle = 'start';
-                    }
-                } catch (error) {
-                    console.error('Decode failed for clip', error);
-                    setStatus('No frames decoded for this clip.');
-                } finally {
+                clip.startFrame = Math.min(clip.startFrame, clip.totalFrames - 1);
+                if (!clip.activeHandle) {
+                    clip.activeHandle = 'start';
+                }
+            } catch (error) {
+                console.error('Decode failed for clip', error);
+                console.warn('[decode] failed clip', {
+                    name: clip.name,
+                    codec: demuxed && demuxed.codec
+                });
+                setStatus('No frames decoded for this clip.');
+            } finally {
                 loading.classList.remove('active');
                 progressContainer.style.display = 'none';
             }
