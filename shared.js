@@ -1833,85 +1833,47 @@ async function encodeGif(options) {
     });
 }
 
-async function encodeMp4(options) {
-    // H.264 encoders require dimensions divisible by 2 (safety check)
-    // This should already be handled upstream, but we double-check here
-    const width = Math.round(options.width / 2) * 2;
-    const height = Math.round(options.height / 2) * 2;
-    const fps = options.fps;
-    const bitrate = options.bitrate || 5000000; // Default 5 Mbps
-    const frameCount = options.frameCount;
-    const getFrame = options.getFrame;
-    const drawFrame = options.drawFrame;
-    const onProgress = options.onProgress;
+// Helper: Find supported H.264 profile for current platform
+async function findSupportedH264Profile(width, height, bitrate, fps) {
+    const profiles = [
+        { codec: 'avc1.42001f', name: 'H.264 Baseline' },  // Most compatible
+        { codec: 'avc1.42E01E', name: 'H.264 Baseline L3' },  // Lower level
+        { codec: 'avc1.4D401F', name: 'H.264 Main' },      // Better quality
+        { codec: 'avc1.640028', name: 'H.264 High' }       // Best quality
+    ];
 
-    if (width !== options.width || height !== options.height) {
-        console.warn(`⚠️ SAFETY CHECK: Adjusted dimensions for H.264 encoding: ${options.width}x${options.height} → ${width}x${height}`);
-        console.warn('This should have been handled upstream. Please check getOutputDimensions()');
-    }
+    for (const profile of profiles) {
+        const config = {
+            codec: profile.codec,
+            width,
+            height,
+            bitrate,
+            framerate: fps,
+            latencyMode: 'quality',
+            bitrateMode: 'variable'
+        };
 
-    // Try H.264/MP4 first, fallback to VP9/WebM if not supported
-    const h264Config = {
-        codec: 'avc1.42001f',
-        width: width,
-        height: height,
-        bitrate: bitrate,
-        framerate: fps,
-        latencyMode: 'quality',
-        bitrateMode: 'variable',
-        avc: { format: 'avc' }
-    };
-
-    console.log('🔍 Checking H.264 encoder support with config:', {
-        codec: h264Config.codec,
-        width: h264Config.width,
-        height: h264Config.height,
-        framerate: h264Config.framerate,
-        bitrate: h264Config.bitrate
-    });
-
-    let useMP4 = true;
-    if (VideoEncoder.isConfigSupported) {
-        const support = await VideoEncoder.isConfigSupported(h264Config);
-        console.log('📊 H.264 encoder support result:', support);
-        if (!support.supported) {
-            console.warn('⚠️ H.264 encoding NOT supported for this configuration, falling back to VP9/WebM');
-            console.warn('❌ Reason: Encoder rejected config with width=' + width + ', height=' + height + ', fps=' + fps);
-            useMP4 = false;
-        } else {
-            console.log('✅ H.264 encoding IS supported for this configuration');
+        try {
+            const support = await VideoEncoder.isConfigSupported(config);
+            if (support.supported) {
+                return { ...config, avc: { format: 'avc' }, profileName: profile.name };
+            }
+        } catch (error) {
+            continue;
         }
     }
 
-    // Fallback to WebM if MP4 not supported
-    if (!useMP4) {
-        const webmBlob = await encodeFramesWithCanvas(options);
-        // Return blob with format metadata
-        webmBlob._format = 'webm';
-        return webmBlob;
-    }
+    return null;
+}
 
-    // Proceed with MP4 encoding
-    const encoderError = new Error();
-    const muxer = new MP4Muxer(width, height, fps);
-
-    const encoder = new VideoEncoder({
-        output: (chunk, meta) => muxer.add(chunk, meta),
-        error: (error) => {
-            error.stack = encoderError.stack;
-            throw error;
-        }
-    });
-
-    encoder.configure(h264Config);
-
-    // Encode all frames
+// Helper: Encode frames using VideoEncoder
+async function encodeFramesWithEncoder(encoder, options) {
+    const { width, height, fps, frameCount, getFrame, drawFrame, onProgress } = options;
     const { canvas, ctx } = createEncodingCanvas(width, height);
+
     for (let i = 0; i < frameCount; i++) {
         const frame = getFrame(i);
-        if (!frame) {
-            throw new Error('Frame not available at index ' + i);
-        }
+        if (!frame) throw new Error(`Frame ${i} not available`);
 
         // Draw frame to canvas
         if (drawFrame) {
@@ -1920,47 +1882,79 @@ async function encodeMp4(options) {
             ctx.drawImage(frame, 0, 0, width, height);
         }
 
-        // Backpressure: Wait if encoder queue is full (prevents frame drops)
+        // Backpressure: Wait if encoder queue is full
         if (encoder.encodeQueueSize >= 4) {
             await new Promise(resolve =>
                 encoder.addEventListener('dequeue', resolve, { once: true })
             );
         }
 
-        // Create VideoFrame and encode
-        // Note: VideoFrame captures canvas data immediately (not a reference)
+        // Create and encode VideoFrame
         const videoFrame = new VideoFrame(canvas, {
-            timestamp: i * (1000000 / fps), // microseconds
-            duration: 1000000 / fps // microseconds per frame
+            timestamp: i * (1000000 / fps),
+            duration: 1000000 / fps
         });
 
-        // Mark keyframes every 1 second (optimal for short 5-second videos)
-        const keyFrameInterval = 1; // seconds
-        const keyFrame = i % (fps * keyFrameInterval) === 0;
-
+        const keyFrame = i % fps === 0; // Keyframe every second
         encoder.encode(videoFrame, { keyFrame });
         videoFrame.close();
 
-        // Report progress
         if (onProgress) {
-            onProgress({
-                encodedFrames: i + 1,
-                totalFrames: frameCount
-            });
+            onProgress({ encodedFrames: i + 1, totalFrames: frameCount });
         }
 
-        // Yield to event loop (now less needed due to backpressure)
         await new Promise(resolve => setTimeout(resolve, 0));
     }
+}
 
-    // Flush encoder and finalize muxer
-    await encoder.flush();
-    encoder.close();
+async function encodeMp4(options) {
+    // Ensure even dimensions (H.264 requirement)
+    const width = Math.round(options.width / 2) * 2;
+    const height = Math.round(options.height / 2) * 2;
+    const fps = options.fps;
+    const bitrate = options.bitrate || 5000000;
+    const frameCount = options.frameCount;
 
-    // Return MP4 blob with format metadata
-    const mp4Blob = muxer.finalize();
-    mp4Blob._format = 'mp4';
-    return mp4Blob;
+    // Find supported H.264 profile
+    const h264Config = await findSupportedH264Profile(width, height, bitrate, fps);
+
+    if (!h264Config) {
+        console.warn('⚠️ H.264 not supported - using WebM');
+        const webmBlob = await encodeFramesWithCanvas(options);
+        webmBlob._format = 'webm';
+        return webmBlob;
+    }
+
+    console.log(`🎬 Encoding MP4 using ${h264Config.profileName}`);
+
+    // Setup encoder and muxer
+    const muxer = new MP4Muxer(width, height, fps);
+    const encoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.add(chunk, meta),
+        error: (error) => {
+            console.error('Encoder error:', error);
+            throw error;
+        }
+    });
+
+    try {
+        encoder.configure(h264Config);
+        await encodeFramesWithEncoder(encoder, { ...options, width, height });
+        await encoder.flush();
+        encoder.close();
+
+        const mp4Blob = muxer.finalize();
+        mp4Blob._format = 'mp4';
+        console.log('✅ MP4 encoding successful');
+        return mp4Blob;
+    } catch (error) {
+        console.error('❌ MP4 encoding failed:', error.message);
+        console.warn('Falling back to WebM');
+        try { encoder.close(); } catch (e) {}
+        const webmBlob = await encodeFramesWithCanvas(options);
+        webmBlob._format = 'webm';
+        return webmBlob;
+    }
 }
 
 function createFramePlayback(options) {

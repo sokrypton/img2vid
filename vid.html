@@ -957,24 +957,21 @@
             let outputHeight = inputHeight;
 
             if (sizeOption === 'original') {
-                // No scaling - keep original dimensions
                 outputWidth = inputWidth;
                 outputHeight = inputHeight;
             } else if (sizeOption.startsWith('w')) {
-                // WIDTHxAUTO (e.g., w600, w480)
                 const targetWidth = parseInt(sizeOption.substring(1));
                 const scale = targetWidth / inputWidth;
                 outputWidth = targetWidth;
                 outputHeight = Math.round(inputHeight * scale);
             } else if (sizeOption.startsWith('h')) {
-                // AUTOxHEIGHT (e.g., h720, h480)
                 const targetHeight = parseInt(sizeOption.substring(1));
                 const scale = targetHeight / inputHeight;
                 outputWidth = Math.round(inputWidth * scale);
                 outputHeight = targetHeight;
             }
 
-            // Ensure even dimensions (required for video encoding)
+            // Ensure even dimensions (H.264 requirement)
             if (outputWidth % 2 !== 0) outputWidth -= 1;
             if (outputHeight % 2 !== 0) outputHeight -= 1;
 
@@ -2092,12 +2089,14 @@
         let previewBaseCanvas = null;
         let previewBaseCtx = null;
 
-        function getOutputDimensions() {
+function getOutputDimensions() {
             let outputWidth = 0;
             let outputHeight = 0;
+
             if (!clips.length) {
                 return { outputWidth, outputHeight };
             }
+
             const firstClip = clips[0];
             if (firstClip && firstClip.width && firstClip.height) {
                 if (firstClip.cropRect && firstClip.cropRect.w > 0 && firstClip.cropRect.h > 0) {
@@ -2109,6 +2108,7 @@
                     outputHeight = firstClip.height;
                 }
             }
+
             if (!outputWidth || !outputHeight) {
                 for (const clip of clips) {
                     if (clip.width && clip.height) {
@@ -2119,16 +2119,9 @@
                 }
             }
 
-            // Ensure even dimensions for H.264 encoding compatibility
-            // H.264 requires dimensions divisible by 2
-            if (outputWidth % 2 !== 0) {
-                console.log(`📐 Adjusted output width: ${outputWidth} → ${outputWidth - 1} (H.264 requires even dimensions)`);
-                outputWidth -= 1;
-            }
-            if (outputHeight % 2 !== 0) {
-                console.log(`📐 Adjusted output height: ${outputHeight} → ${outputHeight - 1} (H.264 requires even dimensions)`);
-                outputHeight -= 1;
-            }
+            // Ensure even dimensions (H.264 requirement)
+            if (outputWidth % 2 !== 0) outputWidth -= 1;
+            if (outputHeight % 2 !== 0) outputHeight -= 1;
 
             return { outputWidth, outputHeight };
         }
@@ -2862,14 +2855,7 @@
                 } else if (format === 'mp4') {
                     encodeOptions.bitrate = bitrate;
                     blob = await encodeMp4(encodeOptions);
-                    // Check actual format (may have fallen back to WebM)
                     actualFormat = blob._format || 'mp4';
-
-                    // Warn user if MP4 encoding fell back to WebM
-                    if (actualFormat === 'webm') {
-                        console.warn('⚠️ MP4 encoding not supported - exported as WebM instead');
-                        alert('⚠️ MP4 encoding failed (likely due to video dimensions or browser limitations).\n\nExported as WebM instead.\n\nCheck console for details.');
-                    }
                 } else if (format === 'gif') {
                     encodeOptions.gifQuality = quality;
                     encodeOptions.gifDither = dither;
