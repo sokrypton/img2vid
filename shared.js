@@ -1918,16 +1918,22 @@ async function encodeMp4(options) {
     const frameCount = options.frameCount;
 
     // Find supported H.264 profile
-    const h264Config = await findSupportedH264Profile(width, height, bitrate, fps);
+    const h264BaseConfig = await findSupportedH264Profile(width, height, bitrate, fps);
 
-    if (!h264Config) {
+    if (!h264BaseConfig) {
         console.warn('⚠️ H.264 not supported - using WebM');
         const webmBlob = await encodeFramesWithCanvas(options);
         webmBlob._format = 'webm';
         return webmBlob;
     }
 
-    console.log(`🎬 Encoding MP4 using ${h264Config.profileName}`);
+    // Add avc format for actual encoding (required by encoder, but not by support check)
+    const h264Config = {
+        ...h264BaseConfig,
+        avc: { format: 'avc' }
+    };
+
+    console.log(`🎬 Encoding MP4 using ${h264BaseConfig.profileName}`);
 
     // Setup encoder and muxer
     const muxer = new MP4Muxer(width, height, fps);
