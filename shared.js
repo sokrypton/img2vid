@@ -1836,11 +1836,13 @@ async function encodeGif(options) {
 // Helper: Find supported H.264 profile for current platform
 async function findSupportedH264Profile(width, height, bitrate, fps) {
     const profiles = [
-        { codec: 'avc1.42001f', name: 'H.264 Baseline' },  // Most compatible
+        { codec: 'avc1.42001f', name: 'H.264 Baseline' },     // Most compatible
         { codec: 'avc1.42E01E', name: 'H.264 Baseline L3' },  // Lower level
-        { codec: 'avc1.4D401F', name: 'H.264 Main' },      // Better quality
-        { codec: 'avc1.640028', name: 'H.264 High' }       // Best quality
+        { codec: 'avc1.4D401F', name: 'H.264 Main' },         // Better quality
+        { codec: 'avc1.640028', name: 'H.264 High' }          // Best quality
     ];
+
+    console.log(`🔍 Testing H.264 support: ${width}x${height} @ ${fps}fps, ${(bitrate/1000000).toFixed(1)}Mbps`);
 
     for (const profile of profiles) {
         const config = {
@@ -1848,21 +1850,21 @@ async function findSupportedH264Profile(width, height, bitrate, fps) {
             width,
             height,
             bitrate,
-            framerate: fps,
-            latencyMode: 'quality',
-            bitrateMode: 'variable'
+            framerate: fps
         };
 
         try {
             const support = await VideoEncoder.isConfigSupported(config);
+            console.log(`  ${support.supported ? '✅' : '❌'} ${profile.name} (${profile.codec})`);
             if (support.supported) {
-                return { ...config, avc: { format: 'avc' }, profileName: profile.name };
+                return { ...config, profileName: profile.name };
             }
         } catch (error) {
-            continue;
+            console.log(`  ❌ ${profile.name} (${profile.codec}) - Error: ${error.message}`);
         }
     }
 
+    console.warn('❌ No H.264 profile supported on this browser/platform');
     return null;
 }
 
