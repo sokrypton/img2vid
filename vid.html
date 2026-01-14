@@ -992,10 +992,6 @@
                 outputHeight = targetHeight;
             }
 
-            // Ensure even dimensions (H.264 requirement)
-            if (outputWidth % 2 !== 0) outputWidth -= 1;
-            if (outputHeight % 2 !== 0) outputHeight -= 1;
-
             return { width: outputWidth, height: outputHeight };
         }
 
@@ -1016,10 +1012,7 @@
             // Use crop dimensions if available, otherwise use full output dimensions
             let croppedWidth, croppedHeight;
             if (cropRect && cropRect.w > 0 && cropRect.h > 0) {
-                // Clamp and ensure even dimensions (required for video encoding)
                 let cropRectSafe = clampCropRect(cropRect, outputWidth, outputHeight);
-                if (cropRectSafe.w % 2 !== 0) cropRectSafe.w -= 1;
-                if (cropRectSafe.h % 2 !== 0) cropRectSafe.h -= 1;
                 croppedWidth = cropRectSafe.w;
                 croppedHeight = cropRectSafe.h;
             } else {
@@ -2179,10 +2172,6 @@ function getOutputDimensions() {
                 }
             }
 
-            // Ensure even dimensions (H.264 requirement)
-            if (outputWidth % 2 !== 0) outputWidth -= 1;
-            if (outputHeight % 2 !== 0) outputHeight -= 1;
-
             return { outputWidth, outputHeight };
         }
 
@@ -2901,15 +2890,9 @@ function getOutputDimensions() {
                 return;
             }
             let cropRectSafe = clampCropRect(cropRect, outputWidth, outputHeight);
-            if (cropRectSafe.w % 2 !== 0) cropRectSafe.w -= 1;
-            if (cropRectSafe.h % 2 !== 0) cropRectSafe.h -= 1;
             if (cropRectSafe.w <= 0 || cropRectSafe.h <= 0) {
-                setStatus('Crop box must be at least 2×2 pixels.');
+                setStatus('Crop box must be at least 1×1 pixel.');
                 return;
-            }
-            if (cropRectSafe.w !== cropRect.w || cropRectSafe.h !== cropRect.h) {
-                cropRect = { ...cropRectSafe };
-                updateCropOverlay();
             }
 
             mergeBtnBottom.disabled = true;
@@ -2926,7 +2909,10 @@ function getOutputDimensions() {
                 const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
 
                 // Calculate final output dimensions after size scaling
-                const { width: finalWidth, height: finalHeight } = calculateOutputSize(cropRectSafe.w, cropRectSafe.h);
+                let { width: finalWidth, height: finalHeight } = calculateOutputSize(cropRectSafe.w, cropRectSafe.h);
+                // Ensure even dimensions (H.264 requirement)
+                if (finalWidth % 2 !== 0) finalWidth -= 1;
+                if (finalHeight % 2 !== 0) finalHeight -= 1;
 
                 // Calculate frame count with skipping
                 const outputFrameCount = Math.ceil(totalFrames / skip);
