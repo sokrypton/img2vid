@@ -808,22 +808,38 @@
             <div id="webmOptions" class="control-row format-options" style="display:none;">
                 <label for="webmBitrate">Bitrate (Mbps):</label>
                 <select id="webmBitrate">
+                    <option value="1000000">1</option>
                     <option value="2000000">2</option>
+                    <option value="3000000">3</option>
                     <option value="4000000">4</option>
+                    <option value="5000000">5</option>
                     <option value="6000000" selected>6</option>
                     <option value="8000000">8</option>
+                    <option value="10000000">10</option>
                     <option value="12000000">12</option>
+                    <option value="15000000">15</option>
+                    <option value="20000000">20</option>
+                    <option value="25000000">25</option>
+                    <option value="30000000">30</option>
                 </select>
             </div>
 
             <div id="mp4Options" class="control-row format-options">
                 <label for="mp4Bitrate">Bitrate (Mbps):</label>
                 <select id="mp4Bitrate">
+                    <option value="1000000">1</option>
                     <option value="2000000">2</option>
+                    <option value="3000000">3</option>
                     <option value="4000000">4</option>
                     <option value="5000000" selected>5</option>
+                    <option value="6000000">6</option>
                     <option value="8000000">8</option>
+                    <option value="10000000">10</option>
                     <option value="12000000">12</option>
+                    <option value="15000000">15</option>
+                    <option value="20000000">20</option>
+                    <option value="25000000">25</option>
+                    <option value="30000000">30</option>
                 </select>
             </div>
 
@@ -1282,6 +1298,7 @@
             fpsSelector.disabled = false;
             fpsSelector.style.opacity = '1';
             downloadControls.style.display = 'block';
+            autoSelectBitrate();
             setStatus('Adjust start/end frames, reorder clips, then merge.');
         }
 
@@ -2167,6 +2184,69 @@ function getOutputDimensions() {
             if (outputHeight % 2 !== 0) outputHeight -= 1;
 
             return { outputWidth, outputHeight };
+        }
+
+        function autoSelectBitrate() {
+            const { outputWidth, outputHeight } = getOutputDimensions();
+            if (!outputWidth || !outputHeight) return;
+
+            // Calculate pixels for resolution-based recommendation
+            const pixels = outputWidth * outputHeight;
+
+            // Get average source bitrate from clips (if available)
+            let avgSourceBitrate = 0;
+            let bitrateCount = 0;
+            for (const clip of clips) {
+                if (clip.bitrate && clip.bitrate > 0) {
+                    avgSourceBitrate += clip.bitrate;
+                    bitrateCount++;
+                }
+            }
+            if (bitrateCount > 0) {
+                avgSourceBitrate = avgSourceBitrate / bitrateCount;
+            }
+
+            // Resolution-based bitrate recommendations (in bps)
+            // These are quality-focused defaults
+            let recommendedBitrate;
+            if (pixels <= 230400) {         // <= 480p (640x360)
+                recommendedBitrate = 2000000;
+            } else if (pixels <= 518400) {  // <= 720p (960x540)
+                recommendedBitrate = 4000000;
+            } else if (pixels <= 921600) {  // <= 720p+ (1280x720)
+                recommendedBitrate = 6000000;
+            } else if (pixels <= 2073600) { // <= 1080p (1920x1080)
+                recommendedBitrate = 10000000;
+            } else if (pixels <= 3686400) { // <= 1440p (2560x1440)
+                recommendedBitrate = 15000000;
+            } else {                        // 4K and above
+                recommendedBitrate = 25000000;
+            }
+
+            // If source bitrate is available, use it as a guide but cap at recommended
+            // (no point encoding higher than source quality)
+            if (avgSourceBitrate > 0) {
+                recommendedBitrate = Math.min(recommendedBitrate, Math.ceil(avgSourceBitrate / 1000000) * 1000000);
+                // Ensure minimum of 1 Mbps
+                recommendedBitrate = Math.max(recommendedBitrate, 1000000);
+            }
+
+            // Find closest available option
+            const options = [1000000, 2000000, 3000000, 4000000, 5000000, 6000000, 8000000, 10000000, 12000000, 15000000, 20000000, 25000000, 30000000];
+            let closest = options[0];
+            let minDiff = Math.abs(recommendedBitrate - closest);
+            for (const opt of options) {
+                const diff = Math.abs(recommendedBitrate - opt);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closest = opt;
+                }
+            }
+
+            // Set both selectors
+            webmBitrate.value = String(closest);
+            mp4Bitrate.value = String(closest);
+            updateSizeEstimate();
         }
 
         let lastOutputSize = { w: 0, h: 0 };
