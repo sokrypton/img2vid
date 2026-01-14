@@ -715,7 +715,7 @@
 
         <div class="upload-area" id="uploadArea">
             <p>Click or drag to upload multiple MP4/WebM files</p>
-            <input type="file" id="fileInput" accept="video/mp4,video/webm,video/quicktime" multiple>
+            <input type="file" id="fileInput" accept="video/mp4,video/webm" multiple>
         </div>
 
         <div class="info" id="info">Upload at least one clip to edit or merge.</div>
@@ -2206,29 +2206,29 @@ function getOutputDimensions() {
                 avgSourceBitrate = avgSourceBitrate / bitrateCount;
             }
 
-            // Resolution-based bitrate recommendations (in bps)
-            // These are quality-focused defaults
+            // If source bitrate is available, use it to preserve quality
+            // Otherwise fall back to resolution-based recommendation
             let recommendedBitrate;
-            if (pixels <= 230400) {         // <= 480p (640x360)
-                recommendedBitrate = 2000000;
-            } else if (pixels <= 518400) {  // <= 720p (960x540)
-                recommendedBitrate = 4000000;
-            } else if (pixels <= 921600) {  // <= 720p+ (1280x720)
-                recommendedBitrate = 6000000;
-            } else if (pixels <= 2073600) { // <= 1080p (1920x1080)
-                recommendedBitrate = 10000000;
-            } else if (pixels <= 3686400) { // <= 1440p (2560x1440)
-                recommendedBitrate = 15000000;
-            } else {                        // 4K and above
-                recommendedBitrate = 25000000;
-            }
-
-            // If source bitrate is available, use it as a guide but cap at recommended
-            // (no point encoding higher than source quality)
             if (avgSourceBitrate > 0) {
-                recommendedBitrate = Math.min(recommendedBitrate, Math.ceil(avgSourceBitrate / 1000000) * 1000000);
-                // Ensure minimum of 1 Mbps
-                recommendedBitrate = Math.max(recommendedBitrate, 1000000);
+                // Round up to nearest Mbps to avoid quality loss
+                recommendedBitrate = Math.ceil(avgSourceBitrate / 1000000) * 1000000;
+                // Clamp to reasonable range (1-30 Mbps)
+                recommendedBitrate = Math.max(1000000, Math.min(30000000, recommendedBitrate));
+            } else {
+                // Resolution-based fallback when source bitrate is unknown
+                if (pixels <= 230400) {         // <= 480p (640x360)
+                    recommendedBitrate = 2000000;
+                } else if (pixels <= 518400) {  // <= 720p (960x540)
+                    recommendedBitrate = 4000000;
+                } else if (pixels <= 921600) {  // <= 720p+ (1280x720)
+                    recommendedBitrate = 5000000;
+                } else if (pixels <= 2073600) { // <= 1080p (1920x1080)
+                    recommendedBitrate = 8000000;
+                } else if (pixels <= 3686400) { // <= 1440p (2560x1440)
+                    recommendedBitrate = 16000000;
+                } else {                        // 4K and above
+                    recommendedBitrate = 30000000;
+                }
             }
 
             // Find closest available option
