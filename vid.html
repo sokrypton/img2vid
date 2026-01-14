@@ -1202,6 +1202,13 @@
                         if (!duration && meta.duration) {
                             duration = meta.duration;
                         }
+                        if (width && height) {
+                            demuxed.width = width;
+                            demuxed.height = height;
+                        }
+                        if (duration) {
+                            demuxed.duration = duration;
+                        }
                     }
                     const totalFrames = demuxed.samples && demuxed.samples.length
                         ? demuxed.samples.length
@@ -1254,6 +1261,7 @@
                 });
                 clip.viewerOpen = true;
                 renderClips();
+                await new Promise(resolve => setTimeout(resolve, 200));
             }
             fpsSelector.disabled = false;
             fpsSelector.style.opacity = '1';

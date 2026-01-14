@@ -1336,27 +1336,15 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
         }
     }
 
-    // 4. Setup for hash calculation (always needed for duplicate detection/reporting)
-    const skipDuplicates = options.skipDuplicates !== undefined ? options.skipDuplicates : false;
-    const sampleSize = options.sampleSize || 16;
-    const sampleCanvas = document.createElement('canvas');
-    sampleCanvas.width = sampleSize;
-    sampleCanvas.height = sampleSize;
-    const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
-
-    let lastHash = null;
     const frames = [];
     const onProgress = options.onProgress;
     let decodedCount = 0;
-    let skippedCount = 0;
     let lastTimestamp = -1;
     let duplicateTimestampCount = 0;
 
     // Track timestamps to detect frame loss
     const expectedTimestamps = demuxed.samples.map(s => s.timestampUs || 0);
     const receivedTimestamps = [];
-    const frameHashes = []; // Track visual hashes for duplicate detection
-
     // 4. Create VideoDecoder with output handler
     return new Promise(async (resolve, reject) => {
         const decoder = new VideoDecoder({
@@ -1373,32 +1361,6 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
                         duplicateTimestampCount++;
                     }
                     lastTimestamp = videoFrame.timestamp;
-
-                    // Calculate visual hash (always, for duplicate detection)
-                    sampleCtx.drawImage(videoFrame, 0, 0, sampleSize, sampleSize);
-                    const data = sampleCtx.getImageData(0, 0, sampleSize, sampleSize).data;
-                    let hash = 0;
-                    for (let i = 0; i < data.length; i += 4) {
-                        hash = (hash + data[i] + data[i + 1] + data[i + 2]) >>> 0;
-                    }
-                    frameHashes.push(hash);
-
-                    // Optional hash-based deduplication (skip storage if enabled)
-                    if (skipDuplicates) {
-                        if (hash !== lastHash) {
-                            lastHash = hash;
-                        } else {
-                            shouldCapture = false;
-                            skippedCount++;
-                            console.log(`⏭️ Skipped duplicate frame ${decodedCount} (hash: ${hash})`);
-                        }
-                    } else {
-                        // Just track duplicates for reporting (don't skip)
-                        if (hash === lastHash) {
-                            skippedCount++;
-                        }
-                        lastHash = hash;
-                    }
 
                     if (shouldCapture) {
                         // Convert VideoFrame to ImageBitmap for consistent storage
@@ -1518,40 +1480,7 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
                 console.log(`Received frames: ${receivedTimestamps.length}`);
                 console.log(`Stored frames: ${frames.length}`);
 
-                // Visual duplicate detection
-                const uniqueHashes = new Set(frameHashes);
-                const visualDuplicates = frameHashes.length - uniqueHashes.size;
-
-                if (skipDuplicates) {
-                    console.log(`📊 ${totalSamples} samples → ${frames.length} unique frames (${skippedCount} duplicates removed)`);
-                } else {
-                    console.log(`📊 ${totalSamples} samples → ${frames.length} frames`);
-                    if (visualDuplicates > 0) {
-                        console.warn(`⚠️ VISUAL DUPLICATES: ${visualDuplicates} frames have identical visual content`);
-
-                        // Find which frames are duplicates
-                        const hashMap = new Map();
-                        frameHashes.forEach((hash, idx) => {
-                            if (!hashMap.has(hash)) {
-                                hashMap.set(hash, []);
-                            }
-                            hashMap.get(hash).push(idx);
-                        });
-
-                        const duplicateGroups = Array.from(hashMap.entries())
-                            .filter(([hash, indices]) => indices.length > 1)
-                            .slice(0, 5); // Show first 5 groups
-
-                        console.warn('Duplicate frame groups (frame indices):');
-                        duplicateGroups.forEach(([hash, indices]) => {
-                            console.warn(`  Hash ${hash}: frames ${indices.join(', ')}`);
-                        });
-
-                        if (hashMap.size > 5) {
-                            console.warn(`  ... and ${hashMap.size - 5} more groups`);
-                        }
-                    }
-                }
+                console.log(`📊 ${totalSamples} samples → ${frames.length} frames`);
 
                 // Check for missing timestamps
                 const receivedSet = new Set(receivedTimestamps);
@@ -1580,10 +1509,8 @@ async function extractFramesWithWebCodecs(videoFile, demuxed, options = {}) {
                 }
 
                 // Summary
-                if (missingTimestamps.length === 0 && duplicateTimestampCount === 0 && unexpectedTimestamps.length === 0 && visualDuplicates === 0) {
-                    console.log('✅ All frames decoded successfully with unique content!');
-                } else if (missingTimestamps.length === 0 && duplicateTimestampCount === 0 && visualDuplicates > 0) {
-                    console.warn('⚠️ All frames received but some have duplicate visual content (decoder may be struggling on this device)');
+                if (missingTimestamps.length === 0 && duplicateTimestampCount === 0 && unexpectedTimestamps.length === 0) {
+                    console.log('✅ All frames decoded successfully!');
                 } else {
                     console.error('⚠️ Frame loss/duplication detected. Consider using playback method on this device.');
                 }
